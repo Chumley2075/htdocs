@@ -1,5 +1,5 @@
 // variables
-var className = 'ICS 370 - Software Design Model';
+var className = 'ICS 370 - Software Design Model'; // can be edited
 var room  = 'Room 115';
 
 var startAt = '6:00 PM';
