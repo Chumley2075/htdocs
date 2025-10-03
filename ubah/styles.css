@@ -7,11 +7,9 @@ html,body{
 }
 
 /* wrapper */
-.wrap.wide{
-  max-width: none;
-  margin: 16px auto;
-  padding: 0 16px;
-}
+main.wrap.wide{flex: 1;}
+  
+
 
 /* headings and text */
 h1{margin: 0 0 8px; font-size: 24px;}
@@ -24,7 +22,7 @@ p{ margin: 10px 0;}
 #display {
   background: white;
   padding: 16px;
-  border: 1px solid gray; 
+  border: 0; 
 }
 
 /* status styles */
@@ -36,6 +34,7 @@ p{ margin: 10px 0;}
 .available {background: green; }
 
 /* Big scan face button */
+
 .big-scan {
   display: flex;
   align-items: center;
