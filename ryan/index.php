@@ -1,25 +1,17 @@
- <?
-require_once './database.php';
-$DB = new database();
-
-?>
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Classroom Display</title>
   <link rel="stylesheet" href="styles.css">
-  <script defer src="classroom.js"></script>
-  
 </head>
 <body>
 
 <main>
-  
   <div class="container">
     <section id="display" aria-labelledby="displayHeading" class="panel left">
-      <h2 id="displayHeading">Room <span id="roomNumber"></span></h2>
+      <h2 id="displayHeading">Room <span id="roomNumber">115</span></h2>
 
       <div class="date-time">
         <div><strong>Date:</strong> <time id="dateOnly"></time></div>
@@ -27,7 +19,7 @@ $DB = new database();
       </div>
 
       <div class="details">
-        <p><strong>Current class:</strong> <span id="currentClass"></span></p>
+        <p><strong>Current class:</strong> <span id="currentClass">Loading...</span></p>
         <p><strong>Window:</strong> <span id="window"></span></p>
         <p class="status-row">
           <strong>Status:</strong>
@@ -43,8 +35,26 @@ $DB = new database();
   </div>
 </main>
 
-<footer>
-</footer>
+<script>
+function updateClassInfo() {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+            var fullInfo = JSON.parse(this.responseText);
+            document.getElementById("currentClass").textContent = fullInfo[0];
+            var now = new Date();
+            document.getElementById("dateOnly").textContent = now.toLocaleDateString();
+            document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
+        }
+    };
+    xhttp.open("GET", "getClassInfo.php?room=115", true);
+    xhttp.send();
+}
+
+// Update immediately and then every second
+updateClassInfo();
+setInterval(updateClassInfo, 1000);
+</script>
 
 </body>
 </html>

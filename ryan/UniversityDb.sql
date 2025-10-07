@@ -101,3 +101,5 @@ INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_t
 -- PHYS 110 - Fri 10:00–12:30
 INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_time) VALUES
 (8, 5, 'Fri', '10:00:00', '12:30:00');
+
+ALTER TABLE ClassSchedule MODIFY COLUMN day_of_week ENUM('Sun','Mon','Tue','Wed','Thu','Fri','Sat');

@@ -1,13 +1,13 @@
 <?php
 class database
 {
-    protected $username = 'rorot';
+    protected $username = 'root';
     protected $password = 'ics311';
     protected $db = 'UniversityDB';
     protected $server = 'localhost';
-    protected $connnection;
+    protected $connection;
 
-    function __construct($username = 'roort', $password = 'ics311', $db = 'UniversityDB', $server = 'localhost')
+    function __construct($username = 'root', $password = 'ics311', $db = 'UniversityDB', $server = 'localhost')
     {
         $this->username = $username;
         $this->password = $password;
@@ -56,6 +56,9 @@ class database
             return "Error: $query cannot be blank";
         }
         $result = $cn->query($query);
+        if ($result === false) {
+            return [];
+        }
         // Fetch all
         $array = $result->fetch_all(MYSQLI_ASSOC);
         // Free result set
@@ -78,22 +81,30 @@ class database
     
 
     public function getCurrentClassID($roomNumber) {
-        $query = "
-            SELECT c.classID
-            FROM ClassSchedule cs
-            JOIN Classes c ON cs.class_id = c.class_id
-            WHERE cs.day_of_week = DAYNAME(CURDATE())
-              AND cs.start_time <= CURTIME()
-              AND cs.end_time > CURTIME()
-              AND c.roomNumber = $roomNumber;
-        ";
+        $roomNumber = intval($roomNumber);
+        $query = "SELECT 
+            c.class_id
+        FROM Classes c
+        JOIN ClassSchedule cs ON c.class_id = cs.class_id
+        WHERE c.roomNumber = $roomNumber
+        AND cs.day_of_week = DATE_FORMAT(CURDATE(), '%a')
+        AND CURTIME() BETWEEN cs.start_time AND cs.end_time";
+
         $result = $this->QueryAll($query);
-        return $result;
+       if (count($result) === 0) {
+            return null;
+        } else {
+            return intval($result[0]['class_id']);
+        }
     }
     public function getClassName($classID) {
         $query = "SELECT class_name FROM Classes WHERE classID = $classID";
         $result = $this->QueryAll($query);
-        return $result;
+        if (count($result) === 0) {
+            return null;
+        } else {
+            return $result[0]['class_name'];
+        }
     }
     public function getClassStartTime($classID) {
         $query = "SELECT start_time FROM ClassSchedule WHERE class_id = $classID";
