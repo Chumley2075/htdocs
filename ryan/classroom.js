@@ -1,6 +1,7 @@
 // variables
 var className = ''; 
 var room  = 115;
+document.getElementById('roomNumber').textContent = room;
 
 var startAt = '';
 var endsAt = '';
@@ -28,8 +29,8 @@ function tick() {
  function splitTimeString(timeString) {
   const parts = timeString.split(':');
   const h = Number(parts[0]);
-  const m = Number(parts[1] || 0);
-  const s = Number(parts[2] || 0);
+  const m = Number(parts[1]);
+  const s = Number(parts[2]);
   return h * 3600 + m * 60 + s; 
 }
 
@@ -57,7 +58,6 @@ function isTimeInRange(timeStr, startStr, endStr) {
   }
   return inRange;
 }
-  
   
 }
 tick();

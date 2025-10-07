@@ -77,5 +77,32 @@ class database
     }
     
 
- 
+    public function getCurrentClassID($roomNumber) {
+        $query = "
+            SELECT c.classID
+            FROM ClassSchedule cs
+            JOIN Classes c ON cs.class_id = c.class_id
+            WHERE cs.day_of_week = DAYNAME(CURDATE())
+              AND cs.start_time <= CURTIME()
+              AND cs.end_time > CURTIME()
+              AND c.roomNumber = $roomNumber;
+        ";
+        $result = $this->QueryAll($query);
+        return $result;
+    }
+    public function getClassName($classID) {
+        $query = "SELECT class_name FROM Classes WHERE classID = $classID";
+        $result = $this->QueryAll($query);
+        return $result;
+    }
+    public function getClassStartTime($classID) {
+        $query = "SELECT start_time FROM ClassSchedule WHERE class_id = $classID";
+        $result = $this->QueryAll($query);
+        return $result;
+    }
+    public function getClassEndTime($classID) {
+        $query = "SELECT end_time FROM ClassSchedule WHERE class_id = $classID";
+        $result = $this->QueryAll($query);
+        return $result;
+    }
 }
