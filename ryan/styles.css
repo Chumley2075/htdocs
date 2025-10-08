@@ -1,4 +1,4 @@
-/* Reset & base */
+  /* Reset & base */
 html, body {
   margin: 0;
   height: 100%;
@@ -39,10 +39,15 @@ h2 { margin: 0 0 12px; font-size: 32px; font-weight: 600; }
 
 .details p strong { display: inline-block; width: 120px; color: #0b1220; }
 
-.status-row { display:flex; align-items:center; gap: 12px; }
+.status-row strong { width:auto; margin-right:auto; }         
 #status { padding: 6px 12px; border-radius: 999px; color: #fff; font-weight:600; }
-.available { background: #059669; }
-.in-session { background: #dc2626; }
+.available { 
+  background: #059669; 
+}
+.in-session { 
+  background: #dc2626; 
+
+}
 .ends { color: #475569; font-size: 14px; }
 
 /* Scan button (right panel) */

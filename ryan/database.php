@@ -98,7 +98,7 @@ class database
         }
     }
     public function getClassName($classID) {
-        $query = "SELECT class_name FROM Classes WHERE classID = $classID";
+        $query = "SELECT class_name FROM Classes WHERE class_id = $classID";
         $result = $this->QueryAll($query);
         if (count($result) === 0) {
             return null;
@@ -106,14 +106,39 @@ class database
             return $result[0]['class_name'];
         }
     }
-    public function getClassStartTime($classID) {
-        $query = "SELECT start_time FROM ClassSchedule WHERE class_id = $classID";
-        $result = $this->QueryAll($query);
-        return $result;
+   public function getClassStartTime($classID) {
+    $classID = intval($classID);
+    $query = "
+        SELECT start_time
+        FROM ClassSchedule
+        WHERE class_id = $classID
+          AND day_of_week = DATE_FORMAT(CURDATE(), '%a')
+        ORDER BY start_time ASC
+        LIMIT 1";
+    $result = $this->QueryAll($query);
+
+    if (count($result) === 0) {
+        return null;
+    } else {
+        return $result[0]['start_time'];
     }
-    public function getClassEndTime($classID) {
-        $query = "SELECT end_time FROM ClassSchedule WHERE class_id = $classID";
-        $result = $this->QueryAll($query);
-        return $result;
+}
+
+public function getClassEndTime($classID) {
+    $classID = intval($classID);
+    $query = "
+        SELECT end_time
+        FROM ClassSchedule
+        WHERE class_id = $classID
+          AND day_of_week = DATE_FORMAT(CURDATE(), '%a')
+        ORDER BY end_time DESC
+        LIMIT 1";
+    $result = $this->QueryAll($query);
+
+    if (count($result) === 0) {
+        return null;
+    } else {
+        return $result[0]['end_time'];
     }
+}
 }

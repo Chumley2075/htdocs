@@ -24,8 +24,10 @@
         <p class="status-row">
           <strong>Status:</strong>
           <span id="status" class="available"></span>
-          <span class="ends">Ends: <time id="endsAt"></time></span>
+          
         </p>
+        <p> <strong> Ends in:</strong> <span id = "endsAt"></span></p>
+
       </div>
     </section>
 
@@ -41,17 +43,35 @@ function updateClassInfo() {
     xhttp.onreadystatechange = function() {
         if (this.readyState == 4 && this.status == 200) {
             var fullInfo = JSON.parse(this.responseText);
-            document.getElementById("currentClass").textContent = fullInfo[0];
+            document.getElementById("currentClass").textContent = fullInfo["className"];
+            document.getElementById("status").textContent = fullInfo["status"];
+            document.getElementById("window").textContent = fullInfo["window"];
             var now = new Date();
             document.getElementById("dateOnly").textContent = now.toLocaleDateString();
             document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
+            if(fullInfo["status"] === "In-Session"){
+              document.getElementById("status").className = "in-session";
+            }else{
+              document.getElementById("status").className = "available";
+            } 
+            var hoursLeft = fullInfo["endsAt24"] - now.getHours() - (now.getMinutes()/60);
+            if(hoursLeft < 1){
+              hoursLeft = 0;  
+            }
+            var timeLeft = Math.round((fullInfo["endsAt24"] - now.getHours() - (now.getMinutes()/60))*60);
+            document.getElementById("endsAt").textContent = hoursLeft + " hours " + timeLeft + " minutes" ; 
         }
     };
     xhttp.open("GET", "getClassInfo.php?room=115", true);
     xhttp.send();
 }
+var scanButton = document.getElementById('scanFace');
+if(scanButton){
+  scanButton.onclick = function(){
+    alert('Scan Face(camera will be available soon)');
+  };
+}
 
-// Update immediately and then every second
 updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
