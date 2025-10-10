@@ -73,11 +73,7 @@ INSERT INTO Classes (class_id, class_name, roomNumber, professor_id) VALUES
 (4, 'ICS 370 - Software Design Modeling',      115, 1),
 (5, 'PHYS 110 - General Physics I',            210, 2);
 
--- --------
--- ClassSchedule (recurring weekly meetings)
--- day_of_week ENUM('Mon','Tue','Wed','Thu','Fri','Sat','Sun')
--- time format TIME 'HH:MM:SS'
--- --------
+
 
 -- ICS 101 - Mon/Wed 09:00–10:15
 INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_time) VALUES
@@ -102,4 +98,18 @@ INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_t
 INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_time) VALUES
 (8, 5, 'Fri', '10:00:00', '12:30:00');
 
-ALTER TABLE ClassSchedule MODIFY COLUMN day_of_week ENUM('Sun','Mon','Tue','Wed','Thu','Fri','Sat');
+INSERT INTO ClassSchedule (schedule_id, class_id, day_of_week, start_time, end_time) VALUES
+(9, 1, 'Tue', '15:00:00', '23:00:00');
+
+
+
+SELECT 
+            c.class_id
+        FROM Classes c
+        JOIN ClassSchedule cs ON c.class_id = cs.class_id
+        WHERE c.roomNumber = 115
+        AND cs.day_of_week = DATE_FORMAT(CURDATE(), '%a')
+        AND CURTIME() BETWEEN cs.start_time AND cs.end_time;
+        
+        
+       SELECT end_time FROM ClassSchedule WHERE class_id = 1
