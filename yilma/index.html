@@ -1,12 +1,98 @@
- <!DOCTYPE html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>Page Title homepage</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metro State University | Biometric System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Background Animation -->
+    <div class="bg-animation">
+        <div class="bg-shape shape-1"></div>
+        <div class="bg-shape shape-2"></div>
+        <div class="bg-shape shape-3"></div>
+    </div>
 
-<h1>This is a Heading this one test</h1>
-<p>This is a paragraph.</p>
+    <!-- Header -->
+    <div class="metro-header">
+        <div class="metro-left">
+            <div class="logo-circle">
+                <i class="fas fa-fingerprint"></i>
+            </div>
+            <div class="logo-text">
+                <div class="logo-top">METRO STATE</div>
+                <div class="logo-bottom">UNIVERSITY</div>
+            </div>
+        </div>
+        <div class="metro-right">
+            <div class="user-info" id="userInfo"></div>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </div>
 
+    <!-- Navigation -->
+    <div class="metro-nav">
+        BIOMETRIC CLASSROOM ATTENDANCE SYSTEM
+    </div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Login -->
+        <div class="login-container" id="login">
+            <h2>Welcome to Metro State University</h2>
+            <h3>Professor / Administrator Portal</h3>
+
+            <form id="loginForm">
+                <div class="input-group">
+                    <input type="text" id="uid" placeholder="User ID" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="pwd" placeholder="Password" required>
+                </div>
+                
+                <button type="submit">Access Dashboard</button>
+            </form>
+
+            <div class="demo-info">
+                <strong>Demo Access:</strong><br>
+                Professor: <code>P2001</code> / <code>prof123</code><br>
+                Admin: <code>A3001</code> / <code>admin123</code>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashboard">
+            <h2>Class Attendance Dashboard</h2>
+            
+            <div class="class-selector">
+                <select id="classSelect">
+                    <option value="">Select a Class</option>
+                </select>
+            </div>
+
+            <div class="class-info" id="classInfo">
+                <p><strong id="className">-</strong></p>
+                <p>Time: <span id="classTime">-</span> | Professor: <span id="classProfessor">-</span></p>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student ID</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Scan Time</th>
+                    </tr>
+                </thead>
+                <tbody id="data"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="classroom.js"></script>
+    <script src="script.js"></script>
 </body>
-</html> 
+</html>
