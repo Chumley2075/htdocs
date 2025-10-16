@@ -77,7 +77,7 @@ function updateClassInfo() {
         var minutesLeft = diffMins % 60;
 
         document.getElementById("endsAt").textContent =
-          hoursLeft + " hours " + minutesLeft + " minutes";
+          hoursLeft + " hour(s) " + minutesLeft + " minute(s)";
       }
     }
   };
