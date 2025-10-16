@@ -13,7 +13,7 @@ if($currentClassId === null) {
     $fullInfoArray["className"] = "No class";  
     $fullInfoArray["status"] = "Available";  
     $fullInfoArray["window"] = "Open";
-    
+    $fullInfoArray["hideEndsIn"] = true;
     echo json_encode($fullInfoArray);
     exit;
 }
@@ -27,6 +27,7 @@ $window = $startTime."-".$endTime;
 //$fullInfoArray[] = $currentClassId;
 $fullInfoArray["className"] = $currentClassName;
 $fullInfoArray["status"] = "In-Session";  
+$fullInfoArray["hideEndsIn"] = false;
 
 $fullInfoArray["window"] = $window;
 $fullInfoArray["endsAt"] = $endTime;

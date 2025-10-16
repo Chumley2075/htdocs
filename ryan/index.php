@@ -59,7 +59,11 @@ function updateClassInfo() {
               hoursLeft = 0;  
             }
             var timeLeft = Math.round((fullInfo["endsAt24"] - now.getHours() - (now.getMinutes()/60))*60);
+            if(fullInfo["hideEndsIn"]){
+              document.getElementById("endsAt").textContent = "N/A"; 
+            }else{
             document.getElementById("endsAt").textContent = hoursLeft + " hours " + timeLeft + " minutes" ; 
+            }
         }
     };
     xhttp.open("GET", "getClassInfo.php?room=115", true);
