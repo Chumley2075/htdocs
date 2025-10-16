@@ -36,49 +36,66 @@
     </aside>
   </div>
 </main>
-
 <script>
 function updateClassInfo() {
-    var xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-        if (this.readyState == 4 && this.status == 200) {
-            var fullInfo = JSON.parse(this.responseText);
-            document.getElementById("currentClass").textContent = fullInfo["className"];
-            document.getElementById("status").textContent = fullInfo["status"];
-            document.getElementById("window").textContent = fullInfo["window"];
-            var now = new Date();
-            document.getElementById("dateOnly").textContent = now.toLocaleDateString();
-            document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
-            if(fullInfo["status"] === "In-Session"){
-              document.getElementById("status").className = "in-session";
-            }else{
-              document.getElementById("status").className = "available";
-            } 
-            var hoursLeft = fullInfo["endsAt24"] - now.getHours() - (now.getMinutes()/60);
-            if(hoursLeft < 1){
-              hoursLeft = 0;  
-            }
-            var timeLeft = Math.round((fullInfo["endsAt24"] - now.getHours() - (now.getMinutes()/60))*60);
-            if(fullInfo["hideEndsIn"]){
-              document.getElementById("endsAt").textContent = "N/A"; 
-            }else{
-            document.getElementById("endsAt").textContent = hoursLeft + " hours " + timeLeft + " minutes" ; 
-            }
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function () {
+    if (this.readyState == 4 && this.status == 200) {
+      var fullInfo = JSON.parse(this.responseText);
+
+      document.getElementById("currentClass").textContent = fullInfo["className"];
+      document.getElementById("status").textContent = fullInfo["status"];
+      document.getElementById("window").textContent = fullInfo["window"];
+
+      var now = new Date();
+      document.getElementById("dateOnly").textContent = now.toLocaleDateString();
+      document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
+
+      if (fullInfo["status"] === "In-Session") {
+        document.getElementById("status").className = "in-session";
+      } else {
+        document.getElementById("status").className = "available";
+      }
+
+      if (fullInfo["hideEndsIn"]) {
+        document.getElementById("endsAt").textContent = "N/A";
+      } else {
+        var end = new Date(now);
+
+        var endHour = Math.floor(fullInfo["endsAt24"]);
+        var endMin = Math.round((fullInfo["endsAt24"] % 1) * 60);
+
+        end.setHours(endHour, endMin, 0, 0);
+
+        if (end < now) {
+          end.setDate(end.getDate() + 1);
         }
-    };
-    xhttp.open("GET", "getClassInfo.php?room=115", true);
-    xhttp.send();
+
+        var diffMs = end - now;
+        var diffMins = Math.floor(diffMs / 60000);
+        var hoursLeft = Math.floor(diffMins / 60);
+        var minutesLeft = diffMins % 60;
+
+        document.getElementById("endsAt").textContent =
+          hoursLeft + " hours " + minutesLeft + " minutes";
+      }
+    }
+  };
+  xhttp.open("GET", "getClassInfo.php?room=115", true);
+  xhttp.send();
 }
-var scanButton = document.getElementById('scanFace');
-if(scanButton){
-  scanButton.onclick = function(){
-    alert('Scan Face(camera will be available soon)');
+
+var scanButton = document.getElementById("scanFace");
+if (scanButton) {
+  scanButton.onclick = function () {
+    alert("Scan Face (camera will be available soon)");
   };
 }
 
 updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
+
 
 </body>
 </html>
