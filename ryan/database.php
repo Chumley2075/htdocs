@@ -141,4 +141,55 @@ public function getClassEndTime($classID) {
         return $result[0]['end_time'];
     }
 }
+ function userExist($username)
+    {
+        $query = "select * from users where username = '$username'";
+        if (count($this->QueryAll($query)) === 0) {
+            return "error";
+        } else {
+            return true;
+        }
+    }
+      function getHashedPass($username)
+    {
+        $query = "select password_hash from users where username = '$username'";
+        $result = $this->QueryAll($query);
+
+        if (count($result) === 0) {
+            return '';
+        } else {
+            return $result[0]['password_hash'];
+        }
+    }
+    function getUserInfo($username, $column)
+    {
+        $query = "select $column from users where username = '$username'";
+        $result = $this->QueryAll($query);
+
+        if (count($result) === 0) {
+            return '';
+        } else {
+            return $result[0][$column];
+        }
+    }
+    function isAdmin($username){
+     $query = "select is_prof from users where username = '$username'";
+        if ($this->QueryAll($query) === 0) {
+            return false;
+        } else {
+            return true;
+        }
+    
+    }
+   function createUser($username, $full_name, $password, $is_prof, $is_admin, $is_student) {
+        $query = "select * from users where username = '$username'";
+        if (count($this->QueryAll($query)) >= 1) {
+            return "Error";
+        } else {
+            $query = "insert into users (username, full_name, password_hash, is_prof, is_admin, is_student) values ('$username','$full_name', '$password', $is_prof, $is_admin, $is_student)";
+            $this->Query($query);
+        }
+    }
+
+
 }

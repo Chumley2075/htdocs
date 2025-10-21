@@ -320,28 +320,70 @@ button:active {
 
 /* Dashboard */
 #dashboard {
-    display: none;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
-    width: 85%;
-    max-width: 1000px;
-    margin-top: 200px;
+    
+   
     border-radius: 20px;
     padding: 40px;
     box-shadow: 0 20px 40px rgba(0,0,0,0.15);
     border: 1px solid rgba(255, 255, 255, 0.8);
     z-index: 10;
-    position: relative;
+
+    position: fixed;        
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    width: 85%;
+    max-width: 1000px;
+
 }
+
 
 #dashboard h2 {
-    color: #2d3748;
-    text-align: center;
-    margin-bottom: 30px;
-    font-size: 32px;
-    font-weight: 700;
+  position: absolute;        
+  top: 0;                
+  left: 50%;
+  transform: translate(-50%, -100%); 
+  margin: 0;
+
+  color: #fff;        
+  text-align: center;
+  font-size: 32px;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.35); 
+
+}
+.dashboard-buttons {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
 }
 
+.btn {
+    background: #2d3748;          
+    color: #fff;
+    padding: 8px 16px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.btn:hover {
+    background: #4a5568;          
+}
+
+.btn.logout {
+    background: #c53030;          
+}
+
+.btn.logout:hover {
+    background: #e53e3e;
+}
 /* Class Selector */
 .class-selector {
     display: flex;
