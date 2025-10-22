@@ -173,14 +173,15 @@ public function getClassEndTime($classID) {
         }
     }
     function isAdmin($username){
-     $query = "select is_prof from users where username = '$username'";
-        if ($this->QueryAll($query) === 0) {
-            return false;
-        } else {
-            return true;
-        }
-    
+     $query = "select is_admin from users where username = '$username'";
+     $rows   = $this->QueryAll($query);
+     if (!$rows || !isset($rows[0]['is_admin'])) {
+        return false; 
     }
+    return (int)$rows[0]['is_admin'] === 1;
+}
+    
+    
    function createUser($username, $full_name, $password, $is_prof, $is_admin, $is_student) {
         $query = "select * from users where username = '$username'";
         if (count($this->QueryAll($query)) >= 1) {

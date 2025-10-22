@@ -6,7 +6,7 @@ $db = new database();
 if (!isset($_SESSION['valid_user'])) {
     header("Location: ./index.php");
     exit();
-} else if ($db->isAdmin($_SESSION['valid_user'])) {
+} else if (!($db->isAdmin($_SESSION['valid_user']))) {
     header("Location: ./mainMenu.php");
     exit();
 }
@@ -48,85 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 
-    <style>
-        body { color: #0f172a; }
-        #dashTitle { color: #fff; }
-        .form-panel {
-            background: #ffffff;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-            color: #1f2937;
-        }
-        .form-panel h3 { margin-bottom: 10px; color: #1f2937; }
-        .form-panel label { font-weight: 600; color: #1f2937; }
-        .form-panel input,
-        .form-panel select {
-            width: 100%;
-            padding: 8px;
-            margin: 8px 0 14px;
-            border: 1px solid #cbd5e1;
-            border-radius: 5px;
-            color: #111827;
-            background: #fff;
-        }
-        .form-panel input:focus,
-        .form-panel select:focus {
-            outline: none;
-            border-color: #3a86ff;
-            box-shadow: 0 0 0 3px rgba(58,134,255,.15);
-        }
-        .checkbox-group {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 14px;
-        }
-        .checkbox-group label {
-            font-weight: normal;
-            color: #1f2937;
-        }
-        .checkbox-group input {
-            transform: scale(1.2);
-            margin-right: 6px;
-        }
-        button.create-btn {
-            width: 100%;
-            padding: 10px;
-            background: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button.create-btn:hover { background: #0056b3; }
-        .video-btn {
-            padding: 12px 18px;
-            background: #3a86ff;
-            color: #fff;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: transform .06s ease, box-shadow .2s ease, background .2s ease;
-            box-shadow: 0 6px 14px rgba(0,0,0,.12);
-            width: fit-content; 
-        }
-        .video-btn:hover { background: #2f6fce; }
-        .video-btn:active { transform: translateY(1px); }
-        .video-box {
-            background: #000;
-            border: 3px solid #555;
-            border-radius: 12px;
-            overflow: hidden;
-            aspect-ratio: 16 / 9;    
-            display: grid;
-            place-items: center;
-            width: 100%;
-        }
-        .video-box span { color: #e5e7eb; }
-        .message { margin-top: 10px; font-weight: 500; }
-    </style>
+
 </head>
 
 <body>
@@ -168,12 +90,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
             </div>
 
             
-            <div class="panel panel-right">
-                <button class="video-btn" id="btnRight">Start Capture</button>
-                <div class="video-box" id="videoRight">
-                    <span>Face capture feed will appear here</span>
-                </div>
-            </div>
+           <div class="panel panel-right">
+    <button class="video-btn" id="btnRight" style="display:block;margin-left: 25%;">Start Capture</button>
+    <div class="video-box" id="videoRight">
+        <span id="videoPlaceholder">Face capture feed will appear here</span>
+    </div>
+</div>
+
+<script>
+document.getElementById('btnRight').addEventListener('click', () => {
+  const box = document.getElementById('videoRight');
+  box.innerHTML = `
+    <img src="http://raspberrypi.local:5000/video_feed"
+         style="width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;" />
+  `;
+});
+</script>
         </div>
     </div>
 </body>
