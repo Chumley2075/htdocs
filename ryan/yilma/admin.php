@@ -89,21 +89,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
                 </div>
             </div>
 
-            
-           <div class="panel panel-right">
-    <button class="video-btn" id="btnRight" style="display:block;margin-left: 25%;">Start Capture</button>
+<div class="panel panel-right">
+    <h3>Face Capture</h3>
+    <label for="personIdInput">Person ID:</label>
+    <input type="text" id="personIdInput" name="person_id" placeholder="Enter ID or Name" 
+           style="width:80%; padding:8px; border-radius:8px; border:1px solid #ccc; margin-bottom:10px;">
+    <button class="video-btn" id="btnRight" style="display:block;margin:10px auto;">Start Capture</button>
     <div class="video-box" id="videoRight">
         <span id="videoPlaceholder">Face capture feed will appear here</span>
     </div>
 </div>
 
 <script>
-document.getElementById('btnRight').addEventListener('click', () => {
-  const box = document.getElementById('videoRight');
-  box.innerHTML = `
-    <img src="http://raspberrypi.local:5000/video_feed"
-         style="width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;" />
-  `;
+const btn = document.getElementById('btnRight');
+const box = document.getElementById('videoRight');
+const idInput = document.getElementById('personIdInput');
+let isCapturing = false;
+let imgElement = null;
+
+btn.addEventListener('click', () => {
+  const personId = idInput.value.trim();
+  if (!isCapturing) {
+    if (!personId) {
+      alert("Please enter a Person ID before starting capture.");
+      return;
+    }
+    imgElement = document.createElement('img');
+    imgElement.src = "http://raspberrypi.local:5000/video_feed?person_id=" + encodeURIComponent(personId);
+    imgElement.style = "width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;";
+    box.innerHTML = "";
+    box.appendChild(imgElement);
+    btn.textContent = "Stop Capture";
+    isCapturing = true;
+  } else {
+    if (imgElement) {
+      imgElement.src = "";
+      box.innerHTML = '<span id="videoPlaceholder">Face capture feed will appear here</span>';
+    }
+    btn.textContent = "Start Capture";
+    isCapturing = false;
+  }
 });
 </script>
         </div>
