@@ -53,7 +53,7 @@ header{
   background:#16a34a; /* default available */
 }
 .available{ background:#16a34a } /* green */
-.busy{ background:#3b82f6 }      /* blue (in session) */
+.busy{ background:#f63b3b }      /* blue (in session) */
 
 /* Big scan face button */
 .big-scan{
