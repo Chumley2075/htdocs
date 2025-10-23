@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -6,44 +6,59 @@
   <title>Classroom Display</title>
   <link rel="stylesheet" href="styles.css">
   <script defer src="classroom.js"></script>
-  
 </head>
 <body>
 
-<!-- Header-->
- <header>
-<h1>Classroom Display</h1>
-<p>
-  <strong>Date:</strong> <time id="dateOnly">Thurs,Sep 25,2025</time>
-    <strong>Time:</strong> <time id="timeOnly">6:00 PM</time>
-</p>
-</header>
+  <!-- Header -->
+  <header>
+    <div class="top-bar">
+      <h1>Classroom Display</h1>
+    </div>
+    <p class="datetime">
+      <strong>Date:</strong> <time id="dateOnly">Thu, Sep 25, 2025</time>
+      <strong>Time:</strong> <time id="timeOnly">6:00 PM</time>
+    </p>
+  </header>
 
-<!--Main Content -->
-<main class="wrap wide">
-<!-- display panel-->
- <section id="display" aria-labelledby="displayHeading">
-  <h2 id="displayHeading">Door Display</h2>
+  <!-- Main Content -->
+  <main class="wrap wide">
+    <!-- Display panel -->
+    <section id="display" aria-labelledby="displayHeading">
+      <div class="container">
+         <!-- Accessible, visually-hidden section title -->
+        <h2 id="displayHeading" class="sr-only">Door Display</h2>
 
-  <p><strong>Room:</strong> <span id="roomNumber">Room 115</span></p>
-  <p><strong>Current class:</strong> <span id="currentClass"> ICS 370 - Software Design Model</span></p>
-  <p><strong>Window:</strong> <span id="window">6:00-9:20</span></p>
+        <!-- Hero banner -->
+        <div class="hero">
+          <div class="corner-clock" id="cornerClock">Now 9:00 AM</div>
+          <div class="status-pill" id="statusPill">Available</div>
+          <h1 class="room-title" id="roomTitle">ClassRoom A</h1>
+          <p class="subline" id="availabilityLine">Available for minutes</p>
+          <div class="hero-actions">
+            <button class="chip">15m</button>
+            <button class="chip">30m</button>
+            <button class="chip">60m</button>
+            <button class="chip">More</button>
+          </div>
+        </div>
 
-<p>
-  <strong>Status:</strong> 
-  <span id="status" class="available">Available</span>
-    <strong>Ends:</strong> <time id="endsAt">9:20 PM</time>
-</p>
+        <!-- Details -->
+        <div class="details">
+          <p><strong>Room:</strong> <span id="roomNumber">Room 115</span></p>
+          <p><strong>Current class:</strong> <span id="currentClass">ICS 370 - Software Design Model</span></p>
+          <p><strong>Window:</strong> <span id="window">6:00–9:20</span></p>
+          <p>
+            <strong>Status:</strong> <span id="status" class="available">Available</span>
+            <strong>Ends:</strong> <time id="endsAt">9:20 PM</time>
+          </p>
+        </div>
 
-<!--Scan face button----->
+        <!-- Scan face -->
+        <button id="scanFace" class="big-scan" type="button">Scan Face</button>
+      </div>
+    </section>
+  </main>
 
-    <button id="scanFace" class="big-scan" type="button">Scan Face</button>
-
- </section>  
-</main>
-
-<footer>
-</footer>
-
+  <footer></footer>
 </body>
-</html> 
+</html>
