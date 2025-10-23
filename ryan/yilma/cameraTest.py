@@ -23,4 +23,4 @@ def video_feed():
     return Response(generate_frames(person_id),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 if __name__ == '__main__':
-    app.run(host='192.168.68.79', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)

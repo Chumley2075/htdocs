@@ -115,7 +115,7 @@ btn.addEventListener('click', () => {
       return;
     }
     imgElement = document.createElement('img');
-    imgElement.src = "http://raspberrypi.local:5000/video_feed?person_id=" + encodeURIComponent(personId);
+    imgElement.src = "http://debianRy.local:5000/video_feed?person_id=" + encodeURIComponent(personId);
     imgElement.style = "width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;";
     box.innerHTML = "";
     box.appendChild(imgElement);
