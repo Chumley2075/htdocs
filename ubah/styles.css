@@ -59,10 +59,9 @@ header{
 .big-scan{
   display:flex; align-items:center; justify-content:center;
   width:100%;
-  min-height:360px; height:70vh;
+  min-height:280px; height:40vh;
   background:#e5e7eb;
   color:#111;
-  border:2px dashed #111;
   border-radius:10px;
   font-size:28px; font-weight:700;
   cursor:pointer;
