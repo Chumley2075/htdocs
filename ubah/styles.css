@@ -1,60 +1,71 @@
-/* Page defults */
-html,body{
+/* Page defaults */
+html, body{
   margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: lightgrey;
-  color: black;
+  height: 100%;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #0f172a;
 }
 
-/* wrapper */
-main.wrap.wide{flex: 1;}
-  
+/* Header */
+header{
+  text-align: center;
+  padding: 16px 12px;
+  color: #0f172a;
+}
+.top-bar{display:flex;align-items:center;justify-content:center;gap:10px}
+.logo{height:42px;width:auto}
+.datetime{margin:6px 0 0;color:#475569}
 
-
-/* headings and text */
-h1{margin: 0 0 8px; font-size: 24px;}
-h2{ margin: 8px 0 10px; font-size: 18px;}
-p{ margin: 10px 0;}
-
-
-/* Display panel */
-
-#display {
-  background: white;
-  padding: 16px;
-  border: 0; 
+/* Layout */
+.wrap{max-width:980px;margin:18px auto;padding:0 14px}
+#display{
+  background:#ffffff;
+  border-radius:14px;
+  box-shadow:0 10px 28px rgba(0,0,0,0.25);
+  overflow:hidden;
 }
 
-/* status styles */
-#status {
-  padding: 2px 8px;
-  color: aliceblue;
+/* Hero banner  */
+.hero{
+  position:relative;
+  padding:20px;
+  border-radius:12px;
+  background:
+    linear-gradient(0deg, rgba(0,0,0,.18), rgba(0,0,0,.18)),
+    radial-gradient(1200px 600px at 10% 0%, #344256, #1d2733);
+  color:#fff;
+}
+.corner-clock{
+  position:absolute; top:12px; right:16px;
+  font-size:12px; font-weight:600; letter-spacing:.02em;
+  color:rgba(255,255,255,.95);
 }
 
-.available {background: green; }
+/* Status pill */
+#status{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:9999px;
+  color:#fff;
+  font-weight:700;
+  font-size:12px;
+  line-height:1.4;
+  background:#16a34a; /* default available */
+}
+.available{ background:#16a34a } /* green */
+.busy{ background:#3b82f6 }      /* blue (in session) */
 
 /* Big scan face button */
-
-.big-scan {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 100%;
-  height: 70vh;
-
-  background: gainsboro;
-  color: black;
-  border: 2px dashed black;
-
-  font-size: 28px;
-  font-weight: bold;
-  cursor: pointer;
-
+.big-scan{
+  display:flex; align-items:center; justify-content:center;
+  width:100%;
+  min-height:360px; height:70vh;
+  background:#e5e7eb;
+  color:#111;
+  border:2px dashed #111;
+  border-radius:10px;
+  font-size:28px; font-weight:700;
+  cursor:pointer;
 }
-
-.big-scan:hover,
-.big-scan:focus{
-  background: lightgray;
-  outline: none;
-}
+.big-scan:hover{ background:#dfe3eb }
+.big-scan:focus-visible{ outline:3px solid #3b82f6; outline-offset:2px }
