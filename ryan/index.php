@@ -84,18 +84,87 @@ function updateClassInfo() {
   xhttp.open("GET", "getClassInfo.php?room=115", true);
   xhttp.send();
 }
-
-var scanButton = document.getElementById("scanFace");
-if (scanButton) {
-  scanButton.onclick = function () {
-    alert("Scan Face (camera will be available soon)");
-  };
-}
-
 updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
 
 
 </body>
-</html>
+<div id="faceModal" class="modal">
+  <div class="modal-box">
+    <header class="modal-header">
+      <h3>Face Scan</h3>
+     <button id="closeFaceModal" class="modal-close" type="button" aria-label="Close">&times;</button>
+
+    </header>
+    <div class="modal-content">
+      <img id="faceStream" src="" alt="Face recognition stream">
+    </div>
+  </div>
+</div>
+
+<script>
+const scanBtn = document.getElementById('scanFace');
+let isScanning = false;
+let videoBox = null;
+
+scanBtn.addEventListener('click', async () => {
+  if (!isScanning) {
+    scanBtn.textContent = "Loading Trainer...";
+    await fetch("http://debianRy.local:5001/reload_trainer")
+      .then(r => r.text())
+      .catch(err => console.error("Reload trainer failed", err));
+
+    
+    videoBox = document.createElement('div');
+    videoBox.style = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.9);
+      padding: 10px;
+      border-radius: 10px;
+      z-index: 9999;
+      text-align: center;
+    `;
+
+    const img = document.createElement('img');
+    img.src = "http://debianRy.local:5001/video_feed";
+    img.style = "width:640px; height:480px; border-radius:8px;";
+    videoBox.appendChild(img);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = "&times;";
+    closeBtn.style = `
+      position:absolute;
+      top:5px;
+      right:10px;
+      background:none;
+      border:none;
+      color:white;
+      font-size:30px;
+      cursor:pointer;
+    `;
+    closeBtn.onclick = async () => {
+      img.src = "";
+      document.body.removeChild(videoBox);
+      await fetch("http://debianRy.local:5001/stop_feed")
+        .catch(err => console.error("Stop feed failed", err));
+      scanBtn.textContent = "Scan Face";
+      isScanning = false;
+    };
+
+    videoBox.appendChild(closeBtn);
+    document.body.appendChild(videoBox);
+    scanBtn.textContent = "Stop Scan";
+    isScanning = true;
+  } else {
+    await fetch("http://debianRy.local:5001/stop_feed")
+      .catch(err => console.error("Stop feed failed", err));
+    if (videoBox) document.body.removeChild(videoBox);
+    scanBtn.textContent = "Scan Face";
+    isScanning = false;
+  }
+});
+</script>
