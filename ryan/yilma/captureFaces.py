@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-import cv2, time, numpy as np
+import cv2, time, os, numpy as np
 from pathlib import Path
+os.umask(0o002)  
 
 CAM_INDEX = 0
 BASE_DIR = Path("training_images")
@@ -69,5 +70,15 @@ def generate_frames(person_id: str):
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         if count >= TOTAL_SAMPLES:
-            break
-    cam.release()
+            cam.release()
+            cam = None
+
+            import subprocess, sys
+            subprocess.Popen(
+                [sys.executable, "/var/www/html/htdocs/ryan/yilma/trainer.py"],
+                cwd="/var/www/html/htdocs/ryan/yilma",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT
+            )
+
+            return

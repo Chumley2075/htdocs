@@ -155,7 +155,7 @@ document.getElementById("deleteFaceBtn").addEventListener("click", function() {
         return;
     }
 
-    fetch("./deleteFace.php", {
+    fetch("/htdocs/ryan/yilma/deleteFace.php", {
         method: "POST",
         headers: {"Content-Type": "application/x-www-form-urlencoded"},
         body: "user_id=" + encodeURIComponent(userId)
