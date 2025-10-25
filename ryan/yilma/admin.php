@@ -131,6 +131,40 @@ btn.addEventListener('click', () => {
   }
 });
 </script>
+<div class="panel panel-right">
+    <h3>Delete Face Data</h3>
+
+    <label for="deleteUserId">User ID:</label>
+    <input type="text" id="deleteUserId" placeholder="Enter User ID"
+           style="width:80%; padding:8px; border-radius:8px; border:1px solid #ccc; margin-bottom:10px;">
+
+    <button class="video-btn" id="deleteFaceBtn" style="display:block;margin:10px auto; background:#d9534f;">
+        Delete Face Data
+    </button>
+</div>
+
+<script>
+document.getElementById("deleteFaceBtn").addEventListener("click", function() {
+    const userId = document.getElementById("deleteUserId").value.trim();
+    if (!userId) {
+        alert("Please enter a User ID.");
+        return;
+    }
+
+    if (!confirm("Are you sure you want to delete face data for user: " + userId + "?")) {
+        return;
+    }
+
+    fetch("./deleteFace.php", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "user_id=" + encodeURIComponent(userId)
+    })
+    .then(res => res.text())
+    .then(data => alert(data))
+    .catch(err => alert("Error: " + err));
+});
+</script>
         </div>
     </div>
 </body>

@@ -64,19 +64,16 @@ def upload_trainer_to_db(trainer_file: Path, labels_file: Path):
         trainer_blob = f1.read()
         labels_blob = f2.read()
 
+    cursor.execute("TRUNCATE TABLE face_models") 
     cursor.execute("""
         INSERT INTO face_models (trainer, labels)
         VALUES (%s, %s)
-        ON DUPLICATE KEY UPDATE
-        trainer=VALUES(trainer), labels=VALUES(labels)
     """, (trainer_blob, labels_blob))
-
     conn.commit()
     conn.close()
     print("[INFO] Trainer and labels uploaded to DB.")
 
 
-# === Train recognizer ===
 print("[INFO] Scanning training_images for faces ...")
 faces, ids, label_map = get_images_and_labels(data_path)
 if not faces:
@@ -85,7 +82,7 @@ if not faces:
 print(f"[INFO] Training on {len(faces)} samples across {len(label_map)} person(s)...")
 recognizer.train(faces, np.array(ids))
 
-# === Save locally ===
+
 trainer_yml = trainer_path / "trainer.yml"
 labels_npy = trainer_path / "labels.npy"
 recognizer.write(str(trainer_yml))
