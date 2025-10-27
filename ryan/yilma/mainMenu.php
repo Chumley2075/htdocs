@@ -44,6 +44,14 @@ $DB = new database();
             <div class="class-selector">
                 <select id="classSelect">
                     <option value="">Select a Class</option>
+                    <?php
+                     $classes = $db->getClasses($_SESSION['valid_user']);
+                      foreach ($classes as $row) {
+                          $classID = (int)$row['class_id'];
+                          $classTitle = htmlspecialchars($row['class_name'], ENT_QUOTES, 'UTF-8'); 
+                          echo "<option value=\"$classID\">$classTitle</option>";
+                      }
+            ?>
                 </select>
             </div>
 

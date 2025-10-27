@@ -192,5 +192,25 @@ public function getClassEndTime($classID) {
         }
     }
 
+   function isProf($username){
+     $query = "select is_prof from users where username = '$username'";
+     $rows   = $this->QueryAll($query);
+     if (!$rows || !isset($rows[0]['is_prof'])) {
+        return false; 
+    }
+    return (int)$rows[0]['is_prof'] === 1;
+}
 
+
+  function getClasses($username)
+    {
+        $query = "select * from Classes where professor_username = '$username'";
+        $result = $this->QueryAll($query);
+        if (count($result) === 0) {
+            return [];
+        } else {
+            return $result;
+        }
+    }
+    
 }
