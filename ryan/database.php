@@ -212,5 +212,13 @@ public function getClassEndTime($classID) {
             return $result;
         }
     }
+    function insertAttendance($classID,$username){
     
+    $query = "INSERT INTO Attendance (class_id, student_username, meeting_date, scanned_at)
+VALUES ($classID, '$username', CURDATE(), NOW())
+ON DUPLICATE KEY UPDATE
+  scanned_at = VALUES(scanned_at); 
+  "
+    $this->Query($query); 
+    }
 }

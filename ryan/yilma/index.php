@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = $_POST['username'];
     $password = $_POST['password'];
     $passwordHash = $DB->getHashedPass($user);
-    if ($DB->userExist($user)) {
+    if ($DB->userExist($user) && ($DB->isProf($user) || $DB->isAdmin($user))) {
         if (password_verify($password, $passwordHash)) {
             $_SESSION['valid_user'] = $user;
             header("Location: mainMenu.php");
