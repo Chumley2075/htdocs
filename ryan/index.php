@@ -24,10 +24,8 @@
         <p class="status-row">
           <strong>Status:</strong>
           <span id="status" class="available"></span>
-          
         </p>
-        <p> <strong> Ends in:</strong> <span id = "endsAt"></span></p>
-
+        <p><strong>Ends in:</strong> <span id="endsAt"></span></p>
       </div>
     </section>
 
@@ -36,6 +34,7 @@
     </aside>
   </div>
 </main>
+
 <script>
 function updateClassInfo() {
   var xhttp = new XMLHttpRequest();
@@ -57,25 +56,23 @@ function updateClassInfo() {
         document.getElementById("status").className = "available";
       }
 
+      const canScan = fullInfo["status"] === "In-Session";
+      const scanBtn = document.getElementById("scanFace");
+      scanBtn.disabled = !canScan;
+      scanBtn.title = canScan ? "" : "Face scan available only during class";
+
       if (fullInfo["hideEndsIn"]) {
         document.getElementById("endsAt").textContent = "N/A";
       } else {
         var end = new Date(now);
-
         var endHour = Math.floor(fullInfo["endsAt24"]);
         var endMin = Math.round((fullInfo["endsAt24"] % 1) * 60);
-
         end.setHours(endHour, endMin, 0, 0);
-
-        if (end < now) {
-          end.setDate(end.getDate() + 1);
-        }
-
+        if (end < now) { end.setDate(end.getDate() + 1); }
         var diffMs = end - now;
         var diffMins = Math.floor(diffMs / 60000);
         var hoursLeft = Math.floor(diffMins / 60);
         var minutesLeft = diffMins % 60;
-
         document.getElementById("endsAt").textContent =
           hoursLeft + " hour(s) " + minutesLeft + " minute(s)";
       }
@@ -88,14 +85,13 @@ updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
 
-
 </body>
+
 <div id="faceModal" class="modal">
   <div class="modal-box">
     <header class="modal-header">
       <h3>Face Scan</h3>
-     <button id="closeFaceModal" class="modal-close" type="button" aria-label="Close">&times;</button>
-
+      <button id="closeFaceModal" class="modal-close" type="button" aria-label="Close">&times;</button>
     </header>
     <div class="modal-content">
       <img id="faceStream" src="" alt="Face recognition stream">
@@ -105,17 +101,28 @@ setInterval(updateClassInfo, 1000);
 
 <script>
 const scanBtn = document.getElementById('scanFace');
+const ROOM_ID = document.getElementById('roomNumber').textContent.trim();
+
 let isScanning = false;
 let videoBox = null;
+let autoClose = null;
+
+async function stopScan(imgEl) {
+  try { await fetch("http://debianRy.local:5001/stop_feed"); } catch(e) {}
+  try { await fetch("labels.php?room=" + encodeURIComponent(ROOM_ID), { cache: "no-store" }); } catch(e) {}
+  if (autoClose) { clearTimeout(autoClose); autoClose = null; }
+  if (imgEl) imgEl.src = "about:blank";
+  if (videoBox && videoBox.parentNode) { document.body.removeChild(videoBox); videoBox = null; }
+  scanBtn.textContent = "Scan Face";
+  isScanning = false;
+}
 
 scanBtn.addEventListener('click', async () => {
+  if (scanBtn.disabled) return;
   if (!isScanning) {
     scanBtn.textContent = "Loading Trainer...";
-    await fetch("http://debianRy.local:5001/reload_trainer")
-      .then(r => r.text())
-      .catch(err => console.error("Reload trainer failed", err));
+    await fetch("http://debianRy.local:5001/reload_trainer").catch(()=>{});
 
-    
     videoBox = document.createElement('div');
     videoBox.style = `
       position: fixed;
@@ -130,7 +137,7 @@ scanBtn.addEventListener('click', async () => {
     `;
 
     const img = document.createElement('img');
-    img.src = "http://debianRy.local:5001/video_feed";
+    img.src = "http://debianRy.local:5001/video_feed?t=" + Date.now();
     img.style = "width:640px; height:480px; border-radius:8px;";
     videoBox.appendChild(img);
 
@@ -146,25 +153,16 @@ scanBtn.addEventListener('click', async () => {
       font-size:30px;
       cursor:pointer;
     `;
-    closeBtn.onclick = async () => {
-      img.src = "";
-      document.body.removeChild(videoBox);
-      await fetch("http://debianRy.local:5001/stop_feed")
-        .catch(err => console.error("Stop feed failed", err));
-      scanBtn.textContent = "Scan Face";
-      isScanning = false;
-    };
+    closeBtn.onclick = () => stopScan(img);
 
     videoBox.appendChild(closeBtn);
     document.body.appendChild(videoBox);
     scanBtn.textContent = "Stop Scan";
     isScanning = true;
+
+    autoClose = setTimeout(() => stopScan(img), 10000);
   } else {
-    await fetch("http://debianRy.local:5001/stop_feed")
-      .catch(err => console.error("Stop feed failed", err));
-    if (videoBox) document.body.removeChild(videoBox);
-    scanBtn.textContent = "Scan Face";
-    isScanning = false;
+    await stopScan(videoBox ? videoBox.querySelector("img") : null);
   }
 });
 </script>

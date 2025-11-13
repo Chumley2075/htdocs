@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_user'])) {
         </h2>
 
         <div class="two-col">
-            <!-- LEFT PANEL: Create User -->
+           
             <div class="panel panel-left">
                 <div class="form-panel">
                     <h3>Create User</h3>

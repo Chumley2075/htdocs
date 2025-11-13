@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <style>
-  /* Page background (simple gradient, no animation) */
+  
   body {
     margin: 0;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -122,9 +122,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
 
-    <!-- Main Content -->
+    
     <div class="container">
-        <!-- Login -->
+       
         <div class="login-container" id="login">
             <h2>Welcome to Metro State University</h2>
             <h3>Professor / Administrator Portal</h3>

@@ -1,4 +1,4 @@
-/* ===== RESET & BASE ===== */
+
 * {
     margin: 0;
     padding: 0;
@@ -23,7 +23,7 @@ body {
     overflow-x: hidden;
 }
 
-/* ===== HEADER ===== */
+
 .dashboard-buttons {
     position: fixed;
     top: 20px;
@@ -55,7 +55,7 @@ body {
     background: #e53e3e;
 }
 
-/* ===== ADMIN DASHBOARD ===== */
+
 .admin-wrap {
     margin-top: 100px;
     max-width: 900px;
@@ -83,7 +83,7 @@ body {
     min-width: 300px;
 }
 
-/* ===== FORM PANEL ===== */
+
 .admin-panel,
 .form-panel {
     background: #ffffff;
@@ -124,7 +124,7 @@ select:focus {
     box-shadow: 0 0 0 3px rgba(58,134,255,.15);
 }
 
-/* ===== CHECKBOX GROUP ===== */
+
 .checkbox-group {
     display: flex;
     gap: 16px;
@@ -141,7 +141,7 @@ select:focus {
     margin-right: 6px;
 }
 
-/* ===== BUTTONS ===== */
+
 button,
 .create-btn {
     width: 100%;
@@ -225,7 +225,7 @@ button:hover,
     backdrop-filter: blur(10px);
 }
 
-/* Dashboard title */
+
 #dashTitle {
     text-align: center;
     font-size: 1.8rem;
@@ -234,7 +234,7 @@ button:hover,
     margin-bottom: 30px;
 }
 
-/* Class selector dropdown */
+
 .class-selector {
     width: 100%;
     text-align: center;
@@ -258,7 +258,7 @@ button:hover,
     box-shadow: 0 0 0 3px rgba(58,134,255,0.2);
 }
 
-/* Class info area */
+
 .class-info {
     text-align: center;
     margin-bottom: 20px;
@@ -271,7 +271,6 @@ button:hover,
     color: #fff;
 }
 
-/* Table styling */
 table {
     width: 100%;
     border-collapse: collapse;
@@ -307,7 +306,7 @@ tbody td {
     color: #f1f5f9;
 }
 
-/* Make logout/admin buttons look consistent */
+
 .dashboard-buttons .btn {
     padding: 8px 16px;
     font-size: 0.9rem;
@@ -321,7 +320,7 @@ tbody td {
     background: #b91c1c;
 }
 
-/* Responsive */
+
 @media (max-width: 768px) {
     #dashboard {
         margin: 80px 16px;
