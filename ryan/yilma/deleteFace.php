@@ -22,7 +22,7 @@ $script = "/var/www/html/htdocs/ryan/yilma/deleteFace.py";
 
 
 
-$cmd = $python . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($user_id_raw);
+$cmd = 'sudo ' . $python . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($user_id_raw);
 
 
 $output = [];
@@ -34,7 +34,7 @@ $body = implode("\n", $output);
 
 if ($return_code === 0) {
     
-    echo "? Deleted and retraining started.\n" . $body . "\n";
+    echo "Deleted and retraining started.\n" . $body . "\n";
     exit;
 }
 if ($return_code === 1) {
@@ -45,4 +45,4 @@ if ($return_code === 1) {
 }
 
 http_response_code(500);
-echo "? Error during deletion.\n" . $body . "\n";
+echo "Error during deletion.\n" . $body . "\n";

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.11
 # -*- coding: utf-8 -*-
 import sys, os, shutil, subprocess, traceback
 
@@ -34,15 +34,15 @@ def main() -> int:
     
     try:
         shutil.rmtree(face_dir)
-        print(f"? Deleted user directory: {face_dir}")
+        print(f"Deleted user directory: {face_dir}")
     except PermissionError as e:
-        print(f"? Permission denied removing {face_dir}: {e}")
+        print(f"Permission denied removing {face_dir}: {e}")
         return 2
     except FileNotFoundError:
         print(f"Directory vanished before delete: {face_dir}")
         return 1
     except OSError as e:
-        print(f"? OS error removing {face_dir}: {e}")
+        print(f"OS error removing {face_dir}: {e}")
         return 2
 
    
@@ -50,11 +50,11 @@ def main() -> int:
         if os.path.isfile(path):
             try:
                 os.remove(path)
-                print(f"?? Deleted: {path}")
+                print(f"Deleted: {path}")
             except PermissionError as e:
-                print(f"? Permission denied deleting {path}: {e}")
+                print(f"Permission denied deleting {path}: {e}")
             except OSError as e:
-                print(f"? Could not delete {path}: {e}")
+                print(f"Could not delete {path}: {e}")
         else:
             print(f"(skip) Not found: {path}")
 
@@ -66,9 +66,9 @@ def main() -> int:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
-        print("?? Retraining started in background.")
+        print("Retraining started in background.")
     except Exception:
-        print("? Failed to start trainer:")
+        print("Failed to start trainer:")
         traceback.print_exc()
         
     return 0
