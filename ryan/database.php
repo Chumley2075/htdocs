@@ -2,12 +2,12 @@
 class database
 {
     protected $username = 'root';
-    protected $password = 'ics311';
+    protected $password = 'password';
     protected $db = 'UniversityDB';
     protected $server = 'localhost';
     protected $connection;
 
-    function __construct($username = 'root', $password = 'ics311', $db = 'UniversityDB', $server = 'localhost')
+    function __construct($username = 'root', $password = 'password', $db = 'UniversityDB', $server = 'localhost')
     {
         $this->username = $username;
         $this->password = $password;

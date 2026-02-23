@@ -34,56 +34,92 @@
     </aside>
   </div>
 </main>
-
 <script>
-function updateClassInfo() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function () {
-    if (this.readyState == 4 && this.status == 200) {
-      var fullInfo = JSON.parse(this.responseText);
 
-      document.getElementById("currentClass").textContent = fullInfo["className"];
-      document.getElementById("status").textContent = fullInfo["status"];
-      document.getElementById("window").textContent = fullInfo["window"];
+const FORCE_MOCK = false;
 
-      var now = new Date();
-      document.getElementById("dateOnly").textContent = now.toLocaleDateString();
-      document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
+function getMockClassInfo() {
+  const inSession = true; 
 
-      if (fullInfo["status"] === "In-Session") {
-        document.getElementById("status").className = "in-session";
-      } else {
-        document.getElementById("status").className = "available";
-      }
-
-      const canScan = fullInfo["status"] === "In-Session";
-      const scanBtn = document.getElementById("scanFace");
-      scanBtn.disabled = !canScan;
-      scanBtn.title = canScan ? "" : "Face scan available only during class";
-
-      if (fullInfo["hideEndsIn"]) {
-        document.getElementById("endsAt").textContent = "N/A";
-      } else {
-        var end = new Date(now);
-        var endHour = Math.floor(fullInfo["endsAt24"]);
-        var endMin = Math.round((fullInfo["endsAt24"] % 1) * 60);
-        end.setHours(endHour, endMin, 0, 0);
-        if (end < now) { end.setDate(end.getDate() + 1); }
-        var diffMs = end - now;
-        var diffMins = Math.floor(diffMs / 60000);
-        var hoursLeft = Math.floor(diffMins / 60);
-        var minutesLeft = diffMins % 60;
-        document.getElementById("endsAt").textContent =
-          hoursLeft + " hour(s) " + minutesLeft + " minute(s)";
-      }
-    }
+  return {
+    className: inSession ? "Algebra II (Mock)" : "No Class (Mock)",
+    status: inSession ? "In-Session" : "Available",
+    window: inSession ? "2nd Period 9:10-10:00" : "Open Window",
+    hideEndsIn: false,
+    endsAt24: 10.0 
   };
-  xhttp.open("GET", "getClassInfo.php?room=115", true);
-  xhttp.send();
 }
+
+async function fetchClassInfo(room) {
+  if (FORCE_MOCK) return getMockClassInfo();
+
+  try {
+    const res = await fetch(`getClassInfo.php?room=${encodeURIComponent(room)}`, {
+      cache: "no-store"
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.warn("Using mock class info (backend unavailable):", err);
+    return getMockClassInfo();
+  }
+}
+
+function renderClassInfo(fullInfo) {
+  document.getElementById("currentClass").textContent = fullInfo["className"] ?? "—";
+  document.getElementById("status").textContent = fullInfo["status"] ?? "—";
+  document.getElementById("window").textContent = fullInfo["window"] ?? "—";
+
+  const now = new Date();
+  document.getElementById("dateOnly").textContent = now.toLocaleDateString();
+  document.getElementById("timeOnly").textContent = now.toLocaleTimeString();
+
+  const statusEl = document.getElementById("status");
+  if (fullInfo["status"] === "In-Session") {
+    statusEl.className = "in-session";
+  } else {
+    statusEl.className = "available";
+  }
+
+  const canScan = fullInfo["status"] === "In-Session";
+  const scanBtn = document.getElementById("scanFace");
+  scanBtn.disabled = !canScan;
+  scanBtn.title = canScan ? "" : "Face scan available only during class";
+
+  if (fullInfo["hideEndsIn"]) {
+    document.getElementById("endsAt").textContent = "N/A";
+  } else {
+    const end = new Date(now);
+    const endsAt24 = Number(fullInfo["endsAt24"]);
+    const endHour = Math.floor(endsAt24);
+    const endMin = Math.round((endsAt24 % 1) * 60);
+
+    end.setHours(endHour, endMin, 0, 0);
+    if (end < now) end.setDate(end.getDate() + 1);
+
+    const diffMs = end - now;
+    const diffMins = Math.floor(diffMs / 60000);
+    const hoursLeft = Math.floor(diffMins / 60);
+    const minutesLeft = diffMins % 60;
+
+    document.getElementById("endsAt").textContent =
+      `${hoursLeft} hour(s) ${minutesLeft} minute(s)`;
+  }
+}
+
+async function updateClassInfo() {
+  const room = document.getElementById("roomNumber").textContent.trim() || "115";
+  const info = await fetchClassInfo(room);
+  renderClassInfo(info);
+}
+
 updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
+
 
 </body>
 
