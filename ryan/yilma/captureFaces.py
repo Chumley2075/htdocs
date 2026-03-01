@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import cv2, time, os, numpy as np
 from pathlib import Path
+import mysql.connector
 os.umask(0o002)  
 
 CAM_INDEX = 0
@@ -14,6 +15,47 @@ DELAY_BETWEEN_SAVES = 0.05
 prototxt = str(MODELS_DIR / "deploy.prototxt")
 weights = str(MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel")
 net = cv2.dnn.readNetFromCaffe(prototxt, weights)
+
+
+def log_face_added(person_id: str):
+    conn = None
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="flaskuser",
+            password="ics311",
+            database="UniversityDB"
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_logs (
+                log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                actor_username VARCHAR(100) NULL,
+                target_username VARCHAR(100) NULL,
+                action_type VARCHAR(64) NOT NULL,
+                details TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_action_time (action_type, created_at),
+                INDEX idx_target_time (target_username, created_at)
+            )
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO admin_logs (actor_username, target_username, action_type, details)
+            VALUES (%s, %s, %s, %s)
+            """,
+            ("system_capture", person_id, "face_added", "Face capture completed and retraining started")
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] Could not write face_added log: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def detect_faces_dnn(frame_bgr, conf=CONF_THRESH):
     (h, w) = frame_bgr.shape[:2]
@@ -72,6 +114,7 @@ def generate_frames(person_id: str):
         if count >= TOTAL_SAMPLES:
             cam.release()
             cam = None
+            log_face_added(person_id)
 
             import subprocess, sys
             subprocess.Popen(

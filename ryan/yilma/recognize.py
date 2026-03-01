@@ -1,4 +1,5 @@
 import os
+import time
 from collections import deque
 from pathlib import Path
 from threading import Lock
@@ -14,6 +15,7 @@ TRAINER_DIR = Path("trainer")
 TRAINER_YML = TRAINER_DIR / "trainer.yml"
 LABELS_NPY = TRAINER_DIR / "labels.npy"
 LAST_LABEL_PATH = "/tmp/last_label.txt"
+DEFAULT_DOOR_ID = os.getenv("DOOR_ID", "").strip() or None
 
 prototxt_path = str(MODELS_DIR / "deploy.prototxt")
 model_path = str(MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel")
@@ -33,6 +35,9 @@ depth_helper = DepthHelper(
     min_variation_mm=40,
     required=False,
 )
+_last_logged_label = None
+_last_logged_at = 0.0
+_last_door_eval_at = 0.0
 
 
 def detect_faces_dnn(frame, conf_threshold=0.6):
@@ -91,8 +96,269 @@ def get_latest_labels():
     with _labels_lock:
         return _latest_labels or "Unknown"
 
-def generate_frames():
-    global cam, recognizer, label_map, _latest_labels
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host="localhost",
+        user="flaskuser",
+        password="ics311",
+        database="UniversityDB",
+    )
+
+
+def ensure_door_control(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS door_control_rooms (
+            door_id VARCHAR(50) PRIMARY KEY,
+            room_number INT NULL,
+            is_locked TINYINT(1) NOT NULL DEFAULT 0,
+            lock_mode VARCHAR(40) NOT NULL DEFAULT 'unlocked',
+            lock_reason VARCHAR(255) NULL,
+            last_changed_by VARCHAR(100) NULL,
+            last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_room_number (room_number)
+        )
+        """
+    )
+    cur.execute(
+        """
+        INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by)
+        SELECT CAST(x.room_number AS CHAR),
+               x.room_number,
+               0,
+               'unlocked',
+               'Initial state',
+               'system'
+        FROM (
+            SELECT DISTINCT roomNumber AS room_number
+            FROM Classes
+            WHERE roomNumber IS NOT NULL
+        ) AS x
+        ON DUPLICATE KEY UPDATE room_number = VALUES(room_number)
+        """
+    )
+
+
+def normalize_door_id(door_id):
+    if door_id is None:
+        return None
+    door_id = str(door_id).strip()
+    if not door_id:
+        return None
+    return door_id[:50]
+
+
+def get_door_state(door_id=None):
+    door_id = normalize_door_id(door_id)
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        ensure_door_control(cur)
+        conn.commit()
+        if door_id:
+            cur.execute(
+                """
+                SELECT door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by, last_changed_at
+                FROM door_control_rooms
+                WHERE door_id = %s
+                LIMIT 1
+                """,
+                (door_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by, last_changed_at
+                FROM door_control_rooms
+                ORDER BY room_number, door_id
+                LIMIT 1
+                """
+            )
+        row = cur.fetchone()
+        if row:
+            row["is_locked"] = int(row.get("is_locked", 0))
+            return row
+    except Exception as e:
+        print(f"[WARN] Could not load door state: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return {
+        "door_id": door_id,
+        "room_number": None,
+        "is_locked": 0,
+        "lock_mode": "unlocked",
+        "lock_reason": "",
+        "last_changed_by": "",
+        "last_changed_at": None,
+    }
+
+
+def log_face_scan(label: str):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_logs (
+                log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                actor_username VARCHAR(100) NULL,
+                target_username VARCHAR(100) NULL,
+                action_type VARCHAR(64) NOT NULL,
+                details TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_action_time (action_type, created_at),
+                INDEX idx_target_time (target_username, created_at)
+            )
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO admin_logs (actor_username, target_username, action_type, details)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (label, label, "face_scanned", "Recognized by camera stream"),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] Could not write face_scanned log: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def is_prof_or_admin(username: str):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT is_admin, is_prof
+            FROM users
+            WHERE username = %s
+            LIMIT 1
+            """,
+            (username,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return False
+        return int(row.get("is_admin", 0)) == 1 or int(row.get("is_prof", 0)) == 1
+    except Exception as e:
+        print(f"[WARN] Could not verify role for {username}: {e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def unlock_door_from_face_scan(username: str, door_id=None):
+    door_id = normalize_door_id(door_id)
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        ensure_door_control(cur)
+        if door_id:
+            cur.execute(
+                """
+                UPDATE door_control_rooms
+                SET is_locked = 0,
+                    lock_mode = 'unlocked',
+                    lock_reason = %s,
+                    last_changed_by = %s,
+                    last_changed_at = CURRENT_TIMESTAMP
+                WHERE door_id = %s
+                  AND is_locked = 1
+                  AND lock_mode = 'locked_until_authorized'
+                """,
+                ("Unlocked by authorized face scan", username, door_id),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE door_control_rooms
+                SET is_locked = 0,
+                    lock_mode = 'unlocked',
+                    lock_reason = %s,
+                    last_changed_by = %s,
+                    last_changed_at = CURRENT_TIMESTAMP
+                WHERE is_locked = 1
+                  AND lock_mode = 'locked_until_authorized'
+                """,
+                ("Unlocked by authorized face scan", username),
+            )
+        did_unlock = cur.rowcount > 0
+        if did_unlock:
+            detail = (
+                "Door auto-unlocked after authorized face scan"
+                if not door_id
+                else f"Door {door_id} auto-unlocked after authorized face scan"
+            )
+            cur.execute(
+                """
+                INSERT INTO admin_logs (actor_username, target_username, action_type, details)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (username, None, "door_unlocked_by_face", detail),
+            )
+        conn.commit()
+        return did_unlock
+    except Exception as e:
+        print(f"[WARN] Could not unlock door from face scan: {e}")
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def evaluate_door_auto_unlock(stable_label: str, door_id=None):
+    global _last_door_eval_at
+    now = time.time()
+    if (now - _last_door_eval_at) < 1.5:
+        return
+    _last_door_eval_at = now
+
+    if stable_label == "Unknown":
+        return
+    if not door_id:
+        return
+
+    door_state = get_door_state(door_id)
+    if int(door_state.get("is_locked", 0)) != 1:
+        return
+    if door_state.get("lock_mode") != "locked_until_authorized":
+        return
+
+    for raw in stable_label.split(","):
+        username = raw.strip()
+        if not username or username == "Unknown":
+            continue
+        if is_prof_or_admin(username):
+            unlocked = unlock_door_from_face_scan(username, door_id)
+            if unlocked:
+                if door_id:
+                    print(f"[INFO] Door {door_id} auto-unlocked by face scan: {username}")
+                else:
+                    print(f"[INFO] Door auto-unlocked by face scan: {username}")
+            return
+
+
+def generate_frames(door_id=None):
+    global cam, recognizer, label_map, _latest_labels, _last_logged_label, _last_logged_at
+    resolved_door_id = normalize_door_id(door_id) or DEFAULT_DOOR_ID
     if recognizer is None:
         load_trainer_from_db()
     if cam is None or not cam.isOpened():
@@ -186,6 +452,13 @@ def generate_frames():
                         f.write(_latest_labels)
                 except Exception:
                     pass
+        now = time.time()
+        if stable_label != "Unknown":
+            if stable_label != _last_logged_label or (now - _last_logged_at) >= 30:
+                log_face_scan(stable_label)
+                _last_logged_label = stable_label
+                _last_logged_at = now
+        evaluate_door_auto_unlock(stable_label, resolved_door_id)
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
             continue

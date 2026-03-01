@@ -351,3 +351,312 @@ tbody td {
         color: #93c5fd;
     }
 }
+
+/* Admin Console */
+.admin-body {
+    background: radial-gradient(circle at 10% 10%, #1b3f85 0%, #0e2a5f 45%, #091c40 100%);
+    color: #e6efff;
+}
+
+.admin-shell {
+    max-width: 1200px;
+    margin-top: 110px;
+    padding: 0 16px 28px;
+}
+
+.admin-alert {
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-alert.hidden {
+    display: none;
+}
+
+.admin-alert-text {
+    flex: 1;
+}
+
+.admin-alert-close {
+    width: auto;
+    min-width: 34px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 1rem;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.18);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.admin-alert-close:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.admin-alert.success {
+    background: rgba(14, 159, 110, 0.16);
+    border-color: rgba(14, 159, 110, 0.45);
+    color: #d1fae5;
+}
+
+.admin-alert.error {
+    background: rgba(220, 38, 38, 0.18);
+    border-color: rgba(248, 113, 113, 0.5);
+    color: #fee2e2;
+}
+
+.admin-alert.info {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(96, 165, 250, 0.55);
+    color: #dbeafe;
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.admin-tab {
+    border: 1px solid #335fae;
+    background: rgba(20, 60, 130, 0.55);
+    color: #dfe9ff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.admin-tab.active {
+    background: linear-gradient(135deg, #2885ff, #1556c2);
+    border-color: #6fb0ff;
+    color: #fff;
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.admin-card {
+    background: rgba(14, 36, 79, 0.78);
+    border: 1px solid rgba(109, 150, 226, 0.36);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 12px 25px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(8px);
+}
+
+.admin-card.wide {
+    grid-column: 2;
+}
+
+.admin-card h3 {
+    margin-bottom: 12px;
+    color: #f3f8ff;
+}
+
+.stack-form label,
+.admin-card > label,
+.label-row {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #cbdcfb;
+}
+
+.stack-form input,
+.admin-card input {
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.96);
+}
+
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 12px;
+    margin-bottom: 12px;
+}
+
+.checkbox-grid.compact {
+    grid-template-columns: 1fr;
+    margin-bottom: 0;
+}
+
+.checkbox-grid label {
+    color: #dbeafe;
+    font-weight: 500;
+    font-size: 0.94rem;
+}
+
+.checkbox-grid input[type="checkbox"] {
+    width: auto;
+    margin-right: 6px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 10px;
+    border-bottom: 1px solid rgba(148, 184, 255, 0.24);
+    text-align: left;
+    vertical-align: top;
+}
+
+.admin-table thead th {
+    color: #b4ccff;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.inline-form {
+    margin: 0;
+}
+
+.actions-cell {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.mini-btn {
+    width: auto;
+    padding: 8px 10px;
+    font-size: 0.86rem;
+    border-radius: 8px;
+    background: #2563eb;
+}
+
+.mini-btn.danger,
+.video-btn.danger {
+    background: #c53030;
+}
+
+.mini-btn.danger:hover,
+.video-btn.danger:hover {
+    background: #9f2727;
+}
+
+.log-tag {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.28);
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    color: #dbeafe;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.subtle {
+    color: #b9cbf5;
+    font-size: 0.86rem;
+}
+
+.muted {
+    color: #c0d1f4;
+}
+
+.details {
+    max-width: 380px;
+    white-space: normal;
+}
+
+.door-state {
+    border: 1px solid rgba(109, 150, 226, 0.4);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 14px;
+    display: grid;
+    gap: 6px;
+}
+
+.door-state.locked {
+    background: rgba(185, 28, 28, 0.2);
+    border-color: rgba(252, 165, 165, 0.45);
+}
+
+.door-state.unlocked {
+    background: rgba(3, 105, 161, 0.2);
+    border-color: rgba(125, 211, 252, 0.4);
+}
+
+.door-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.door-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.door-badge.locked {
+    background: rgba(185, 28, 28, 0.2);
+    border: 1px solid rgba(252, 165, 165, 0.45);
+    color: #fecaca;
+}
+
+.door-badge.unlocked {
+    background: rgba(3, 105, 161, 0.2);
+    border: 1px solid rgba(125, 211, 252, 0.4);
+    color: #bae6fd;
+}
+
+@media (max-width: 1024px) {
+    .admin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-card.wide {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-shell {
+        margin-top: 88px;
+    }
+
+    .checkbox-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-table {
+        min-width: 640px;
+    }
+}

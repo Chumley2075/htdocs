@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template_string, make_response
+from flask import Flask, Response, render_template_string, make_response, jsonify, request
 from recognize import generate_frames, stop_camera
 
 app = Flask(__name__)
@@ -18,7 +18,8 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    resp = Response(generate_frames(),
+    door_id = request.args.get('door_id')
+    resp = Response(generate_frames(door_id=door_id),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
     resp.headers['Cache-Control'] = 'no-store'
     return resp
@@ -47,6 +48,28 @@ def label():
             txt = "Unknown"
     resp = make_response(txt if txt else "Unknown")
     resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
+@app.route('/door_state')
+def door_state():
+    door_id = request.args.get('door_id')
+    try:
+        from recognize import get_door_state
+        state = get_door_state(door_id=door_id)
+    except Exception:
+        state = {
+            "door_id": door_id,
+            "room_number": None,
+            "is_locked": 0,
+            "lock_mode": "unlocked",
+            "lock_reason": "",
+            "last_changed_by": "",
+            "last_changed_at": None,
+        }
+    resp = jsonify(state)
     resp.headers['Cache-Control'] = 'no-store'
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
