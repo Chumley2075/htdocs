@@ -97,6 +97,34 @@ class database
         }
     }
 
+    public function getNextClassID($roomNumber): ?int
+    {
+        $roomNumber = intval($roomNumber);
+        $query = "SELECT c.class_id
+                  FROM Classes c
+                  JOIN ClassSchedule cs ON c.class_id = cs.class_id
+                  WHERE c.roomNumber = $roomNumber
+                    AND cs.day_of_week = DATE_FORMAT(CURDATE(), '%a')
+                    AND cs.start_time > (
+                        SELECT csCurrent.end_time
+                        FROM Classes cCurrent
+                        JOIN ClassSchedule csCurrent ON cCurrent.class_id = csCurrent.class_id
+                        WHERE cCurrent.roomNumber = $roomNumber
+                          AND csCurrent.day_of_week = DATE_FORMAT(CURDATE(), '%a')
+                          AND CURTIME() BETWEEN csCurrent.start_time AND csCurrent.end_time
+                        ORDER BY csCurrent.end_time ASC
+                        LIMIT 1
+                    )
+                  ORDER BY cs.start_time ASC
+                  LIMIT 1";
+        $result = $this->QueryAll($query);
+        if (count($result) === 0) {
+            return null;
+        } else {
+            return intval($result[0]['class_id']);
+        }
+    }
+
     public function getClassName($classID)
     {
         $classID = intval($classID);

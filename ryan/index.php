@@ -21,6 +21,7 @@
       <div class="details">
         <p><strong>Current class:</strong> <span id="currentClass">Loading...</span></p>
         <p><strong>Window:</strong> <span id="window"></span></p>
+        <p><strong>Next Class</strong> <span id = "nextClass">Loading...</span></p>
         <p class="status-row">
           <strong>Status:</strong>
           <span id="status" class="available"></span>
@@ -43,6 +44,7 @@ function getMockClassInfo() {
 
   return {
     className: inSession ? "Algebra II (Mock)" : "No Class (Mock)",
+    nextClass: inSession ? "ICS 370 (Mock)" : "Algebra II (Mock)",
     status: inSession ? "In-Session" : "Available",
     window: inSession ? "2nd Period 9:10-10:00" : "Open Window",
     hideEndsIn: false,
@@ -69,9 +71,10 @@ async function fetchClassInfo(room) {
 }
 
 function renderClassInfo(fullInfo) {
-  document.getElementById("currentClass").textContent = fullInfo["className"] ?? "—";
-  document.getElementById("status").textContent = fullInfo["status"] ?? "—";
-  document.getElementById("window").textContent = fullInfo["window"] ?? "—";
+  document.getElementById("currentClass").textContent = fullInfo["className"] ?? "ï¿½";
+  document.getElementById("nextClass").textContent = fullInfo["nextClass"] ?? fullInfo["className"] ?? "ï¿½";
+  document.getElementById("status").textContent = fullInfo["status"] ?? "ï¿½";
+  document.getElementById("window").textContent = fullInfo["window"] ?? "ï¿½";
 
   const now = new Date();
   document.getElementById("dateOnly").textContent = now.toLocaleDateString();
