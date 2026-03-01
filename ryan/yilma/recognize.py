@@ -115,20 +115,29 @@ def ensure_door_control(cur):
             is_locked TINYINT(1) NOT NULL DEFAULT 0,
             lock_mode VARCHAR(40) NOT NULL DEFAULT 'unlocked',
             lock_reason VARCHAR(255) NULL,
+            unlock_until DATETIME NULL,
             last_changed_by VARCHAR(100) NULL,
             last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_room_number (room_number)
         )
         """
     )
+    try:
+        cur.execute(
+            "ALTER TABLE door_control_rooms ADD COLUMN IF NOT EXISTS unlock_until DATETIME NULL"
+        )
+    except Exception:
+        # Older MySQL variants may not support IF NOT EXISTS in ALTER TABLE.
+        pass
     cur.execute(
         """
-        INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by)
+        INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, unlock_until, last_changed_by)
         SELECT CAST(x.room_number AS CHAR),
                x.room_number,
-               0,
-               'unlocked',
+               1,
+               'locked_until_authorized',
                'Initial state',
+               NULL,
                'system'
         FROM (
             SELECT DISTINCT roomNumber AS room_number
@@ -149,6 +158,25 @@ def normalize_door_id(door_id):
     return door_id[:50]
 
 
+def apply_door_timeouts(cur):
+    cur.execute(
+        """
+        UPDATE door_control_rooms
+        SET is_locked = 1,
+            lock_mode = 'locked_until_authorized',
+            lock_reason = 'Auto re-locked after temporary unlock',
+            unlock_until = NULL,
+            last_changed_by = 'system_timeout',
+            last_changed_at = CURRENT_TIMESTAMP
+        WHERE is_locked = 0
+          AND (
+                (unlock_until IS NOT NULL AND unlock_until <= NOW())
+                OR (lock_mode = 'temporary_unlocked' AND TIMESTAMPDIFF(SECOND, last_changed_at, NOW()) >= 5)
+              )
+        """
+    )
+
+
 def get_door_state(door_id=None):
     door_id = normalize_door_id(door_id)
     conn = None
@@ -156,6 +184,7 @@ def get_door_state(door_id=None):
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
         ensure_door_control(cur)
+        apply_door_timeouts(cur)
         conn.commit()
         if door_id:
             cur.execute(

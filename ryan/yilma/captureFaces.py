@@ -16,6 +16,57 @@ prototxt = str(MODELS_DIR / "deploy.prototxt")
 weights = str(MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel")
 net = cv2.dnn.readNetFromCaffe(prototxt, weights)
 
+def upsert_user_profile(person_id: str, full_name: str):
+    display_name = (full_name or "").strip()
+    conn = None
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="flaskuser",
+            password="ics311",
+            database="UniversityDB"
+        )
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT username
+            FROM users
+            WHERE username = %s
+            LIMIT 1
+            """,
+            (person_id,)
+        )
+        exists = cur.fetchone() is not None
+        if exists:
+            if display_name:
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET full_name = %s
+                    WHERE username = %s
+                    LIMIT 1
+                    """,
+                    (display_name, person_id)
+                )
+        else:
+            if not display_name:
+                display_name = person_id
+            cur.execute(
+                """
+                INSERT INTO users (username, full_name, password_hash, is_prof, is_admin, is_student)
+                VALUES (%s, %s, %s, 0, 0, 1)
+                """,
+                (person_id, display_name, "")
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] Could not upsert user profile for face capture: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 
 def log_face_added(person_id: str):
     conn = None
@@ -74,9 +125,10 @@ def detect_faces_dnn(frame_bgr, conf=CONF_THRESH):
                 boxes.append((x1, y1, x2 - x1, y2 - y1))
     return boxes
 
-def generate_frames(person_id: str):
+def generate_frames(person_id: str, full_name: str = ""):
     save_dir = BASE_DIR / person_id
     save_dir.mkdir(parents=True, exist_ok=True)
+    upsert_user_profile(person_id, full_name)
     cam = cv2.VideoCapture(CAM_INDEX)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)

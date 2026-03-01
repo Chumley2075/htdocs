@@ -20,7 +20,8 @@ def index():
 @app.route('/video_feed')
 def video_feed():
     person_id = request.args.get('person_id', 'unknown')
-    return Response(generate_frames(person_id),
+    full_name = request.args.get('full_name', '')
+    return Response(generate_frames(person_id, full_name),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

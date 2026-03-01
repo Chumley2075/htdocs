@@ -19,6 +19,12 @@ $canManageFaces = true;
 $canManageDoors = true;
 $canViewLogs = true;
 
+if (isset($_SESSION['admin_flash']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $message = isset($_SESSION['admin_flash']['message']) ? (string)$_SESSION['admin_flash']['message'] : '';
+    $messageType = isset($_SESSION['admin_flash']['type']) ? (string)$_SESSION['admin_flash']['type'] : 'info';
+    unset($_SESSION['admin_flash']);
+}
+
 if (!$DEV_MODE) {
     require_once '../database.php';
     $db = new database();
@@ -36,11 +42,10 @@ if (!$DEV_MODE) {
 
     $displayName = $db->getUserInfo($_SESSION['valid_user'], 'full_name');
 
-    $perm = $db->getUserPermissions($_SESSION['valid_user']);
-    $canManageUsers = ((int)$perm['can_manage_users'] === 1) || $db->isAdmin($_SESSION['valid_user']);
-    $canManageFaces = ((int)$perm['can_manage_faces'] === 1) || $db->isAdmin($_SESSION['valid_user']);
-    $canManageDoors = ((int)$perm['can_manage_doors'] === 1) || $db->isAdmin($_SESSION['valid_user']);
-    $canViewLogs = ((int)$perm['can_view_logs'] === 1) || $db->isAdmin($_SESSION['valid_user']);
+    $canManageUsers = $db->isAdmin($_SESSION['valid_user']);
+    $canManageFaces = $db->isAdmin($_SESSION['valid_user']);
+    $canManageDoors = $db->isAdmin($_SESSION['valid_user']);
+    $canViewLogs = $db->isAdmin($_SESSION['valid_user']);
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = isset($_POST['action']) ? $_POST['action'] : '';
@@ -59,11 +64,6 @@ if (!$DEV_MODE) {
                 $is_admin = isset($_POST['is_admin']) ? 1 : 0;
                 $is_student = isset($_POST['is_student']) ? 1 : 0;
 
-                $perm_manage_users = isset($_POST['can_manage_users']) ? 1 : 0;
-                $perm_manage_faces = isset($_POST['can_manage_faces']) ? 1 : 0;
-                $perm_manage_doors = isset($_POST['can_manage_doors']) ? 1 : 0;
-                $perm_view_logs = isset($_POST['can_view_logs']) ? 1 : 0;
-
                 if ($username === '' || !preg_match('/^[A-Za-z0-9_]{3,40}$/', $username)) {
                     $message = 'Username must be 3-40 chars and only letters, numbers, underscore.';
                     $messageType = 'error';
@@ -81,16 +81,6 @@ if (!$DEV_MODE) {
                         $message = 'Username already exists.';
                         $messageType = 'error';
                     } elseif ($result === true) {
-                        $db->updateUserRolesAndPermissions(
-                            $username,
-                            $is_prof,
-                            $is_admin,
-                            $is_student,
-                            $perm_manage_users,
-                            $perm_manage_faces,
-                            $perm_manage_doors,
-                            $perm_view_logs
-                        );
                         $db->logAdminEvent(
                             $_SESSION['valid_user'],
                             'user_created',
@@ -112,17 +102,16 @@ if (!$DEV_MODE) {
                 $messageType = 'error';
             } else {
                 $targetUser = trim(isset($_POST['target_username']) ? $_POST['target_username'] : '');
+                $full_name = trim(isset($_POST['full_name']) ? $_POST['full_name'] : '');
                 $is_prof = isset($_POST['is_prof']) ? 1 : 0;
                 $is_admin = isset($_POST['is_admin']) ? 1 : 0;
                 $is_student = isset($_POST['is_student']) ? 1 : 0;
 
-                $perm_manage_users = isset($_POST['can_manage_users']) ? 1 : 0;
-                $perm_manage_faces = isset($_POST['can_manage_faces']) ? 1 : 0;
-                $perm_manage_doors = isset($_POST['can_manage_doors']) ? 1 : 0;
-                $perm_view_logs = isset($_POST['can_view_logs']) ? 1 : 0;
-
                 if ($targetUser === '') {
                     $message = 'Invalid target user.';
+                    $messageType = 'error';
+                } elseif ($full_name === '' || strlen($full_name) > 100) {
+                    $message = 'Full name is required and must be 100 characters or less.';
                     $messageType = 'error';
                 } elseif (($is_prof + $is_admin + $is_student) === 0) {
                     $message = 'A user must keep at least one role.';
@@ -131,23 +120,20 @@ if (!$DEV_MODE) {
                     $message = 'You cannot remove your own admin role.';
                     $messageType = 'error';
                 } else {
-                    $db->updateUserRolesAndPermissions(
+                    $db->updateUserRoles(
                         $targetUser,
                         $is_prof,
                         $is_admin,
                         $is_student,
-                        $perm_manage_users,
-                        $perm_manage_faces,
-                        $perm_manage_doors,
-                        $perm_view_logs
+                        $full_name
                     );
                     $db->logAdminEvent(
                         $_SESSION['valid_user'],
                         'user_updated',
                         $targetUser,
-                        'roles/admin permissions updated'
+                        'roles/full_name updated'
                     );
-                    $message = 'User roles/permissions updated.';
+                    $message = 'User profile updated.';
                     $messageType = 'success';
                 }
             }
@@ -162,9 +148,29 @@ if (!$DEV_MODE) {
                     $message = 'Invalid delete request.';
                     $messageType = 'error';
                 } else {
-                    $db->deleteUserByUsername($targetUser);
-                    $db->logAdminEvent($_SESSION['valid_user'], 'user_deleted', $targetUser, 'Deleted from admin page');
-                    $message = 'User deleted successfully.';
+                    $deleteInfo = $db->deleteUserByUsername($targetUser);
+                    $faceFolderFound = is_array($deleteInfo) && !empty($deleteInfo['face_folder_found']);
+                    $faceFolderDeleted = is_array($deleteInfo) && !empty($deleteInfo['face_folder_deleted']);
+                    $retrainStarted = is_array($deleteInfo) && !empty($deleteInfo['retrain_started']);
+                    $detail = 'Deleted from admin page';
+                    if ($faceFolderFound) {
+                        if ($faceFolderDeleted) {
+                            $detail .= '; face images deleted';
+                            $detail .= $retrainStarted ? '; retraining started' : '; retraining failed to start';
+                        } else {
+                            $detail .= '; face image folder found but delete failed';
+                        }
+                    }
+                    $db->logAdminEvent($_SESSION['valid_user'], 'user_deleted', $targetUser, $detail);
+                    if ($faceFolderDeleted && $retrainStarted) {
+                        $message = 'User deleted. Face images removed and retraining started.';
+                    } elseif ($faceFolderDeleted) {
+                        $message = 'User deleted. Face images removed, but retraining failed to start.';
+                    } elseif ($faceFolderFound) {
+                        $message = 'User deleted, but face-image folder could not be removed.';
+                    } else {
+                        $message = 'User deleted successfully.';
+                    }
                     $messageType = 'success';
                 }
             }
@@ -198,13 +204,32 @@ if (!$DEV_MODE) {
                     $message = 'Invalid door selected.';
                     $messageType = 'error';
                 } else {
-                    $db->setDoorState($doorId, 0, 'unlocked', 'Remotely unlocked by admin', $_SESSION['valid_user'], $roomNumber);
+                    $db->setDoorState(
+                        $doorId,
+                        0,
+                        'temporary_unlocked',
+                        'Remotely unlocked by admin for 5 seconds',
+                        $_SESSION['valid_user'],
+                        $roomNumber,
+                        5
+                    );
                     $db->logAdminEvent($_SESSION['valid_user'], 'door_unlocked_remote', null, 'Door ' . $doorId . ' remotely unlocked');
-                    $message = 'Door ' . $doorId . ' unlocked remotely.';
+                    $message = 'Door ' . $doorId . ' unlocked for 5 seconds, then it will re-lock.';
                     $messageType = 'success';
                 }
             }
         }
+
+        if ($message === '') {
+            $message = 'Action processed.';
+            $messageType = 'info';
+        }
+        $_SESSION['admin_flash'] = [
+            'message' => $message,
+            'type' => $messageType,
+        ];
+        header('Location: ./admin.php?tab=' . rawurlencode($activeTab));
+        exit();
     }
 
     $users = $db->getUsersWithPermissions();
@@ -279,14 +304,6 @@ if (!$DEV_MODE) {
                             <label><input type="checkbox" name="is_student" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Student</label>
                         </div>
 
-                        <div class="label-row">Permissions</div>
-                        <div class="checkbox-grid">
-                            <label><input type="checkbox" name="can_manage_users" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Manage Users</label>
-                            <label><input type="checkbox" name="can_manage_faces" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Manage Faces</label>
-                            <label><input type="checkbox" name="can_manage_doors" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Manage Doors</label>
-                            <label><input type="checkbox" name="can_view_logs" checked <?php echo $DEV_MODE ? 'disabled' : ''; ?>> View Logs</label>
-                        </div>
-
                         <button type="submit" class="create-btn" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>Create User</button>
                     </form>
                     <?php else: ?>
@@ -295,53 +312,66 @@ if (!$DEV_MODE) {
                 </article>
 
                 <article class="admin-card wide">
-                    <h3>User Roles and Permissions</h3>
+                    <h3>User Roles</h3>
                     <div class="table-wrap">
                         <table class="admin-table">
                             <thead>
                                 <tr>
                                     <th>User</th>
                                     <th>Roles</th>
-                                    <th>Permissions</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($users)): ?>
-                                    <tr><td colspan="4" class="muted">No users found.</td></tr>
+                                    <tr><td colspan="3" class="muted">No users found.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($users as $u): ?>
+                                        <?php $updateFormId = 'update_user_' . preg_replace('/[^A-Za-z0-9_]/', '_', (string)$u['username']); ?>
                                         <tr>
                                             <td>
-                                                <strong><?php echo e($u['username']); ?></strong><br>
-                                                <span class="subtle"><?php echo e($u['full_name']); ?></span>
+                                                <strong><?php echo e($u['username']); ?></strong>
+                                                <label class="sr-only" for="<?php echo e($updateFormId . '_full_name'); ?>">Full Name</label>
+                                                <input
+                                                    id="<?php echo e($updateFormId . '_full_name'); ?>"
+                                                    class="inline-fullname"
+                                                    type="text"
+                                                    name="full_name"
+                                                    maxlength="100"
+                                                    value="<?php echo e($u['full_name']); ?>"
+                                                    form="<?php echo e($updateFormId); ?>"
+                                                    <?php echo ($canManageUsers && !$DEV_MODE) ? '' : 'disabled'; ?>
+                                                >
                                             </td>
                                             <td>
-                                                <form method="POST" class="inline-form">
-                                                    <input type="hidden" name="action" value="update_user">
-                                                    <input type="hidden" name="target_username" value="<?php echo e($u['username']); ?>">
-                                                    <div class="checkbox-grid compact">
-                                                        <label><input type="checkbox" name="is_admin" <?php echo ((int)$u['is_admin'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Admin</label>
-                                                        <label><input type="checkbox" name="is_prof" <?php echo ((int)$u['is_prof'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Professor</label>
-                                                        <label><input type="checkbox" name="is_student" <?php echo ((int)$u['is_student'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Student</label>
-                                                    </div>
-                                            </td>
-                                            <td>
-                                                    <div class="checkbox-grid compact">
-                                                        <label><input type="checkbox" name="can_manage_users" <?php echo ((int)$u['can_manage_users'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Manage Users</label>
-                                                        <label><input type="checkbox" name="can_manage_faces" <?php echo ((int)$u['can_manage_faces'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Manage Faces</label>
-                                                        <label><input type="checkbox" name="can_manage_doors" <?php echo ((int)$u['can_manage_doors'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> Manage Doors</label>
-                                                        <label><input type="checkbox" name="can_view_logs" <?php echo ((int)$u['can_view_logs'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>> View Logs</label>
-                                                    </div>
+                                                <div class="checkbox-grid compact">
+                                                    <label>
+                                                        <input type="checkbox" name="is_admin" form="<?php echo e($updateFormId); ?>" <?php echo ((int)$u['is_admin'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>>
+                                                        Admin
+                                                    </label>
+                                                    <label>
+                                                        <input type="checkbox" name="is_prof" form="<?php echo e($updateFormId); ?>" <?php echo ((int)$u['is_prof'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>>
+                                                        Professor
+                                                    </label>
+                                                    <label>
+                                                        <input type="checkbox" name="is_student" form="<?php echo e($updateFormId); ?>" <?php echo ((int)$u['is_student'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>>
+                                                        Student
+                                                    </label>
+                                                </div>
                                             </td>
                                             <td class="actions-cell">
+                                                <div class="actions-row">
+                                                    <form method="POST" class="inline-form" id="<?php echo e($updateFormId); ?>">
+                                                        <input type="hidden" name="action" value="update_user">
+                                                        <input type="hidden" name="target_username" value="<?php echo e($u['username']); ?>">
                                                     <button type="submit" class="mini-btn" <?php echo $canManageUsers && !$DEV_MODE ? '' : 'disabled'; ?>>Save</button>
-                                                </form>
-                                                <form method="POST" class="inline-form" onsubmit="return confirm('Delete user <?php echo e($u['username']); ?>?');">
-                                                    <input type="hidden" name="action" value="delete_user">
-                                                    <input type="hidden" name="target_username" value="<?php echo e($u['username']); ?>">
-                                                    <button type="submit" class="mini-btn danger" <?php echo ($u['username'] === $currentUser || !$canManageUsers || $DEV_MODE) ? 'disabled' : ''; ?>>Delete</button>
-                                                </form>
+                                                    </form>
+                                                    <form method="POST" class="inline-form" onsubmit="return confirm('Delete user <?php echo e($u['username']); ?>?');">
+                                                        <input type="hidden" name="action" value="delete_user">
+                                                        <input type="hidden" name="target_username" value="<?php echo e($u['username']); ?>">
+                                                        <button type="submit" class="mini-btn danger" <?php echo ($u['username'] === $currentUser || !$canManageUsers || $DEV_MODE) ? 'disabled' : ''; ?>>Delete</button>
+                                                    </form>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -360,6 +390,8 @@ if (!$DEV_MODE) {
                     <?php if ($canManageFaces || $DEV_MODE): ?>
                         <label for="personIdInput">Person ID</label>
                         <input type="text" id="personIdInput" name="person_id" placeholder="Enter ID or username">
+                        <label for="personFullNameInput">Full Name (optional)</label>
+                        <input type="text" id="personFullNameInput" name="person_full_name" maxlength="100" placeholder="Enter full name to save/update user profile">
                         <button class="video-btn" id="btnRight" type="button">Start Capture</button>
                         <div class="video-box" id="videoRight">
                             <span id="videoPlaceholder">Face capture feed will appear here</span>
@@ -375,6 +407,7 @@ if (!$DEV_MODE) {
                         <label for="deleteUserId">User ID</label>
                         <input type="text" id="deleteUserId" placeholder="Enter user ID">
                         <button class="video-btn danger" id="deleteFaceBtn" type="button" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>Delete Face Data</button>
+                        <div class="message" id="deleteFaceStatus" aria-live="polite"></div>
          
                     <?php else: ?>
                         <p class="muted">You do not have permission to delete face data.</p>
@@ -418,22 +451,24 @@ if (!$DEV_MODE) {
                                             <div class="subtle"><?php echo e($door['last_changed_at']); ?></div>
                                         </td>
                                         <td class="actions-cell">
-                                            <form method="POST" class="inline-form" onsubmit="return confirm('Lock room <?php echo e($door['door_id']); ?> until professor/admin face scan?');">
-                                                <input type="hidden" name="action" value="door_lock_until_authorized">
-                                                <input type="hidden" name="door_id" value="<?php echo e($door['door_id']); ?>">
-                                                <input type="hidden" name="room_number" value="<?php echo e($door['room_number']); ?>">
-                                                <button type="submit" class="mini-btn danger" <?php echo ($canManageDoors && !$DEV_MODE) ? '' : 'disabled'; ?>>
-                                                    Lock
-                                                </button>
-                                            </form>
-                                            <form method="POST" class="inline-form" onsubmit="return confirm('Unlock room <?php echo e($door['door_id']); ?> now?');">
-                                                <input type="hidden" name="action" value="door_unlock_remote">
-                                                <input type="hidden" name="door_id" value="<?php echo e($door['door_id']); ?>">
-                                                <input type="hidden" name="room_number" value="<?php echo e($door['room_number']); ?>">
-                                                <button type="submit" class="mini-btn" <?php echo ($canManageDoors && !$DEV_MODE) ? '' : 'disabled'; ?>>
-                                                    Unlock
-                                                </button>
-                                            </form>
+                                            <div class="actions-row">
+                                                <form method="POST" class="inline-form" onsubmit="return confirm('Lock room <?php echo e($door['door_id']); ?> until professor/admin face scan?');">
+                                                    <input type="hidden" name="action" value="door_lock_until_authorized">
+                                                    <input type="hidden" name="door_id" value="<?php echo e($door['door_id']); ?>">
+                                                    <input type="hidden" name="room_number" value="<?php echo e($door['room_number']); ?>">
+                                                    <button type="submit" class="mini-btn danger" <?php echo ($canManageDoors && !$DEV_MODE) ? '' : 'disabled'; ?>>
+                                                        Lock
+                                                    </button>
+                                                </form>
+                                                <form method="POST" class="inline-form" onsubmit="return confirm('Unlock room <?php echo e($door['door_id']); ?> now?');">
+                                                    <input type="hidden" name="action" value="door_unlock_remote">
+                                                    <input type="hidden" name="door_id" value="<?php echo e($door['door_id']); ?>">
+                                                    <input type="hidden" name="room_number" value="<?php echo e($door['room_number']); ?>">
+                                                    <button type="submit" class="mini-btn" <?php echo ($canManageDoors && !$DEV_MODE) ? '' : 'disabled'; ?>>
+                                                        Unlock
+                                                    </button>
+                                                </form>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -533,22 +568,24 @@ if (!$DEV_MODE) {
         const btn = document.getElementById('btnRight');
         const box = document.getElementById('videoRight');
         const idInput = document.getElementById('personIdInput');
+        const fullNameInput = document.getElementById('personFullNameInput');
         let isCapturing = false;
         let imgElement = null;
 
-        if (!btn || !box || !idInput) {
+        if (!btn || !box || !idInput || !fullNameInput) {
             return;
         }
 
         btn.addEventListener('click', () => {
             const personId = idInput.value.trim();
+            const fullName = fullNameInput.value.trim();
             if (!isCapturing) {
                 if (!personId) {
                     alert('Please enter a Person ID before starting capture.');
                     return;
                 }
                 imgElement = document.createElement('img');
-                imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId);
+                imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId) + '&full_name=' + encodeURIComponent(fullName);
                 imgElement.style = 'width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;';
                 box.innerHTML = '';
                 box.appendChild(imgElement);

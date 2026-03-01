@@ -271,6 +271,7 @@ class database
                 is_locked TINYINT(1) NOT NULL DEFAULT 0,
                 lock_mode VARCHAR(40) NOT NULL DEFAULT 'unlocked',
                 lock_reason VARCHAR(255) NULL,
+                unlock_until DATETIME NULL,
                 last_changed_by VARCHAR(100) NULL,
                 last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_room_number (room_number)
@@ -281,14 +282,16 @@ class database
         $this->ensureColumnIfMissing('user_permissions', 'can_manage_faces', "TINYINT(1) NOT NULL DEFAULT 0");
         $this->ensureColumnIfMissing('user_permissions', 'can_manage_doors', "TINYINT(1) NOT NULL DEFAULT 0");
         $this->ensureColumnIfMissing('user_permissions', 'can_view_logs', "TINYINT(1) NOT NULL DEFAULT 1");
+        $this->ensureColumnIfMissing('door_control_rooms', 'unlock_until', "DATETIME NULL");
 
         $this->Query("
-            INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by)
+            INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, unlock_until, last_changed_by)
             SELECT CAST(x.room_number AS CHAR),
                    x.room_number,
-                   0,
-                   'unlocked',
+                   1,
+                   'locked_until_authorized',
                    'Initial state',
+                   NULL,
                    'system'
             FROM (
                 SELECT DISTINCT roomNumber AS room_number
@@ -296,6 +299,16 @@ class database
                 WHERE roomNumber IS NOT NULL
             ) AS x
             ON DUPLICATE KEY UPDATE room_number = VALUES(room_number)
+        ");
+
+        // Normalize existing legacy initial rows to locked-by-default state.
+        $this->Query("
+            UPDATE door_control_rooms
+            SET is_locked = 1,
+                lock_mode = 'locked_until_authorized',
+                unlock_until = NULL
+            WHERE lock_reason = 'Initial state'
+              AND (is_locked = 0 OR lock_mode = 'unlocked')
         ");
     }
 
@@ -384,6 +397,28 @@ class database
         return $rows[0];
     }
 
+    public function updateUserRoles($username, $isProf, $isAdmin, $isStudent, $fullName = null)
+    {
+        $usernameEsc = $this->connection->real_escape_string($username);
+        $isProf = (int)$isProf;
+        $isAdmin = (int)$isAdmin;
+        $isStudent = (int)$isStudent;
+        $fullNameSql = '';
+        if ($fullName !== null) {
+            $fullName = trim((string)$fullName);
+            $fullNameEsc = $this->connection->real_escape_string($fullName);
+            $fullNameSql = ", full_name = '$fullNameEsc'";
+        }
+        $query = "UPDATE users
+                  SET is_prof = $isProf,
+                      is_admin = $isAdmin,
+                      is_student = $isStudent
+                      $fullNameSql
+                  WHERE username = '$usernameEsc'
+                  LIMIT 1";
+        $this->Query($query);
+    }
+
     public function updateUserRolesAndPermissions(
         $username,
         $isProf,
@@ -395,21 +430,12 @@ class database
         $canViewLogs
     ) {
         $usernameEsc = $this->connection->real_escape_string($username);
-        $isProf = (int)$isProf;
-        $isAdmin = (int)$isAdmin;
-        $isStudent = (int)$isStudent;
         $canManageUsers = (int)$canManageUsers;
         $canManageFaces = (int)$canManageFaces;
         $canManageDoors = (int)$canManageDoors;
         $canViewLogs = (int)$canViewLogs;
 
-        $query1 = "UPDATE users
-                   SET is_prof = $isProf,
-                       is_admin = $isAdmin,
-                       is_student = $isStudent
-                   WHERE username = '$usernameEsc'
-                   LIMIT 1";
-        $this->Query($query1);
+        $this->updateUserRoles($username, $isProf, $isAdmin, $isStudent);
 
         $query2 = "INSERT INTO user_permissions (username, can_manage_users, can_manage_faces, can_manage_doors, can_view_logs)
                    VALUES ('$usernameEsc', $canManageUsers, $canManageFaces, $canManageDoors, $canViewLogs)
@@ -436,6 +462,7 @@ class database
     public function getDoorStatesForClassRooms()
     {
         $this->ensureAdminTables();
+        $this->applyDoorStateTimeouts();
         $query = "SELECT r.room_number,
                          CAST(r.room_number AS CHAR) AS door_id,
                          r.class_names,
@@ -460,6 +487,7 @@ class database
     public function getDoorState($doorId)
     {
         $this->ensureAdminTables();
+        $this->applyDoorStateTimeouts();
         $doorId = $this->normalizeDoorId($doorId);
         if ($doorId === '') {
             return [
@@ -491,7 +519,7 @@ class database
         return $rows[0];
     }
 
-    public function setDoorState($doorId, $isLocked, $lockMode, $lockReason, $changedBy, $roomNumber = null)
+    public function setDoorState($doorId, $isLocked, $lockMode, $lockReason, $changedBy, $roomNumber = null, $unlockAfterSeconds = null)
     {
         $this->ensureAdminTables();
         $doorId = $this->normalizeDoorId($doorId);
@@ -500,28 +528,214 @@ class database
         }
         $isLocked = (int)$isLocked;
         $roomNumberSql = $roomNumber !== null ? (int)$roomNumber : "NULL";
+        $unlockAfterSeconds = $unlockAfterSeconds !== null ? (int)$unlockAfterSeconds : null;
+        if ($unlockAfterSeconds !== null && $unlockAfterSeconds > 0) {
+            $unlockUntilSql = "DATE_ADD(NOW(), INTERVAL $unlockAfterSeconds SECOND)";
+        } else {
+            $unlockUntilSql = "NULL";
+        }
         $doorEsc = $this->connection->real_escape_string($doorId);
         $lockModeEsc = $this->connection->real_escape_string($lockMode);
         $lockReasonEsc = $this->connection->real_escape_string($lockReason);
         $changedByEsc = $this->connection->real_escape_string($changedBy);
         $this->Query("
-            INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, last_changed_by)
-            VALUES ('$doorEsc', $roomNumberSql, $isLocked, '$lockModeEsc', '$lockReasonEsc', '$changedByEsc')
+            INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, unlock_until, last_changed_by)
+            VALUES ('$doorEsc', $roomNumberSql, $isLocked, '$lockModeEsc', '$lockReasonEsc', $unlockUntilSql, '$changedByEsc')
             ON DUPLICATE KEY UPDATE
                 room_number = COALESCE(VALUES(room_number), room_number),
                 is_locked = VALUES(is_locked),
                 lock_mode = VALUES(lock_mode),
                 lock_reason = VALUES(lock_reason),
+                unlock_until = VALUES(unlock_until),
                 last_changed_by = VALUES(last_changed_by),
                 last_changed_at = CURRENT_TIMESTAMP
         ");
     }
 
+    private function applyDoorStateTimeouts()
+    {
+        $this->Query("
+            UPDATE door_control_rooms
+            SET is_locked = 1,
+                lock_mode = 'locked_until_authorized',
+                lock_reason = 'Auto re-locked after temporary unlock',
+                unlock_until = NULL,
+                last_changed_by = 'system_timeout',
+                last_changed_at = CURRENT_TIMESTAMP
+            WHERE is_locked = 0
+              AND (
+                    (unlock_until IS NOT NULL AND unlock_until <= NOW())
+                    OR (lock_mode = 'temporary_unlocked' AND TIMESTAMPDIFF(SECOND, last_changed_at, NOW()) >= 5)
+                  )
+        ");
+    }
+
+    private function deleteDirectoryRecursive($path)
+    {
+        if (!is_dir($path)) {
+            return true;
+        }
+        $items = scandir($path);
+        if ($items === false) {
+            return false;
+        }
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $target = $path . DIRECTORY_SEPARATOR . $item;
+            if (is_dir($target)) {
+                if (!$this->deleteDirectoryRecursive($target)) {
+                    return false;
+                }
+            } else {
+                if (!@unlink($target)) {
+                    return false;
+                }
+            }
+        }
+        return @rmdir($path);
+    }
+
+    private function findUserFaceImageFolder($username)
+    {
+        $username = trim((string)$username);
+        if ($username === '') {
+            return null;
+        }
+        $basePath = __DIR__ . '/yilma/training_images';
+        if (!is_dir($basePath)) {
+            return null;
+        }
+        $baseReal = realpath($basePath);
+        if ($baseReal === false) {
+            return null;
+        }
+        $entries = scandir($baseReal);
+        if ($entries === false) {
+            return null;
+        }
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            if (strcasecmp($entry, $username) !== 0) {
+                continue;
+            }
+            $candidate = $baseReal . DIRECTORY_SEPARATOR . $entry;
+            if (!is_dir($candidate)) {
+                continue;
+            }
+            $candidateReal = realpath($candidate);
+            if ($candidateReal === false) {
+                continue;
+            }
+            if (strpos($candidateReal, $baseReal . DIRECTORY_SEPARATOR) !== 0) {
+                continue;
+            }
+            return [
+                'entry' => $entry,
+                'path' => $candidateReal,
+            ];
+        }
+        return null;
+    }
+
+    private function deleteUserFaceWithScript($folderName)
+    {
+        $folderName = trim((string)$folderName);
+        if ($folderName === '') {
+            return [
+                'deleted' => false,
+                'retrain_started' => false,
+            ];
+        }
+        $python = '/var/www//py311env/bin/python3.11';
+        $script = __DIR__ . '/yilma/deleteFace.py';
+        if (!is_file($python) || !is_file($script)) {
+            return [
+                'deleted' => false,
+                'retrain_started' => false,
+            ];
+        }
+
+        $cmd = 'sudo ' . escapeshellarg($python) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($folderName);
+        $output = [];
+        $code = 1;
+        @exec($cmd . ' 2>&1', $output, $code);
+        if ($code === 0) {
+            return [
+                'deleted' => true,
+                'retrain_started' => true,
+            ];
+        }
+        return [
+            'deleted' => false,
+            'retrain_started' => false,
+        ];
+    }
+
+    private function deleteUserFaceImageFolder($username)
+    {
+        $match = $this->findUserFaceImageFolder($username);
+        if (!$match || !isset($match['path'], $match['entry'])) {
+            return [
+                'found' => false,
+                'deleted' => false,
+                'retrain_started' => false,
+            ];
+        }
+
+        $deleted = $this->deleteDirectoryRecursive($match['path']);
+        if ($deleted) {
+            return [
+                'found' => true,
+                'deleted' => true,
+                'retrain_started' => false,
+            ];
+        }
+
+        $fallback = $this->deleteUserFaceWithScript((string)$match['entry']);
+        return [
+            'found' => true,
+            'deleted' => !empty($fallback['deleted']),
+            'retrain_started' => !empty($fallback['retrain_started']),
+        ];
+    }
+
+    private function startTrainerInBackground()
+    {
+        $python = '/var/www//py311env/bin/python3.11';
+        $script = __DIR__ . '/yilma/trainer.py';
+        if (!is_file($python) || !is_file($script)) {
+            return false;
+        }
+        $cmd = 'sudo ' . escapeshellarg($python) . ' ' . escapeshellarg($script) . ' >/dev/null 2>&1 &';
+        $output = [];
+        $code = 1;
+        @exec($cmd, $output, $code);
+        return $code === 0;
+    }
+
     public function deleteUserByUsername($username)
     {
+        $faceDeleteInfo = $this->deleteUserFaceImageFolder($username);
+        $faceFolderFound = is_array($faceDeleteInfo) && !empty($faceDeleteInfo['found']);
+        $faceFolderDeleted = is_array($faceDeleteInfo) && !empty($faceDeleteInfo['deleted']);
+        $retrainStarted = is_array($faceDeleteInfo) && !empty($faceDeleteInfo['retrain_started']);
+        if ($faceFolderDeleted) {
+            if (!$retrainStarted) {
+                $retrainStarted = $this->startTrainerInBackground();
+            }
+        }
         $usernameEsc = $this->connection->real_escape_string($username);
         $this->Query("DELETE FROM user_permissions WHERE username = '$usernameEsc'");
         $this->Query("DELETE FROM users WHERE username = '$usernameEsc' LIMIT 1");
+        return [
+            'face_folder_found' => $faceFolderFound,
+            'face_folder_deleted' => $faceFolderDeleted,
+            'retrain_started' => $retrainStarted,
+        ];
     }
 
     function isProf($username)
