@@ -6,7 +6,7 @@
   <title>Classroom Display</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="display-body">
 
 <main>
   <div class="container">
@@ -21,10 +21,10 @@
       <div class="details">
         <p><strong>Current class:</strong> <span id="currentClass">Loading...</span></p>
         <p><strong>Window:</strong> <span id="window"></span></p>
-        <p><strong>Next Class</strong> <span id = "nextClass">Loading...</span></p>
+        <p><strong>Next Class:</strong> <span id="nextClass">Loading...</span></p>
         <p class="status-row">
           <strong>Status:</strong>
-          <span id="status" class="available"></span>
+          <span id="status" class="status-pill available"></span>
         </p>
         <p><strong>Ends in:</strong> <span id="endsAt"></span></p>
       </div>
@@ -71,10 +71,10 @@ async function fetchClassInfo(room) {
 }
 
 function renderClassInfo(fullInfo) {
-  document.getElementById("currentClass").textContent = fullInfo["className"] ?? "�";
-  document.getElementById("nextClass").textContent = fullInfo["nextClass"] ?? fullInfo["className"] ?? "�";
-  document.getElementById("status").textContent = fullInfo["status"] ?? "�";
-  document.getElementById("window").textContent = fullInfo["window"] ?? "�";
+  document.getElementById("currentClass").textContent = fullInfo["className"] ?? "-";
+  document.getElementById("nextClass").textContent = fullInfo["nextClass"] ?? fullInfo["className"] ?? "-";
+  document.getElementById("status").textContent = fullInfo["status"] ?? "-";
+  document.getElementById("window").textContent = fullInfo["window"] ?? "-";
 
   const now = new Date();
   document.getElementById("dateOnly").textContent = now.toLocaleDateString();
@@ -82,9 +82,9 @@ function renderClassInfo(fullInfo) {
 
   const statusEl = document.getElementById("status");
   if (fullInfo["status"] === "In-Session") {
-    statusEl.className = "in-session";
+    statusEl.className = "status-pill in-session";
   } else {
-    statusEl.className = "available";
+    statusEl.className = "status-pill available";
   }
 
   const canScan = fullInfo["status"] === "In-Session";
@@ -123,13 +123,10 @@ updateClassInfo();
 setInterval(updateClassInfo, 1000);
 </script>
 
-
-</body>
-
-<div id="faceModal" class="modal">
+<div id="faceModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="faceModalTitle">
   <div class="modal-box">
     <header class="modal-header">
-      <h3>Face Scan</h3>
+      <h3 id="faceModalTitle">Face Scan</h3>
       <button id="closeFaceModal" class="modal-close" type="button" aria-label="Close">&times;</button>
     </header>
     <div class="modal-content">
@@ -140,18 +137,21 @@ setInterval(updateClassInfo, 1000);
 
 <script>
 const scanBtn = document.getElementById('scanFace');
-const ROOM_ID = document.getElementById('roomNumber').textContent.trim();
+const roomNumberEl = document.getElementById('roomNumber');
+const ROOM_ID = roomNumberEl ? roomNumberEl.textContent.trim() : '115';
+const faceModal = document.getElementById('faceModal');
+const closeFaceModal = document.getElementById('closeFaceModal');
+const faceStream = document.getElementById('faceStream');
 
 let isScanning = false;
-let videoBox = null;
 let autoClose = null;
 
-async function stopScan(imgEl) {
+async function stopScan() {
   try { await fetch("http://debianRy.local:5001/stop_feed"); } catch(e) {}
   try { await fetch("labels.php?room=" + encodeURIComponent(ROOM_ID), { cache: "no-store" }); } catch(e) {}
   if (autoClose) { clearTimeout(autoClose); autoClose = null; }
-  if (imgEl) imgEl.src = "about:blank";
-  if (videoBox && videoBox.parentNode) { document.body.removeChild(videoBox); videoBox = null; }
+  if (faceStream) faceStream.src = "about:blank";
+  if (faceModal) faceModal.classList.remove('show');
   scanBtn.textContent = "Scan Face";
   isScanning = false;
 }
@@ -161,47 +161,36 @@ scanBtn.addEventListener('click', async () => {
   if (!isScanning) {
     scanBtn.textContent = "Loading Trainer...";
     await fetch("http://debianRy.local:5001/reload_trainer").catch(()=>{});
-
-    videoBox = document.createElement('div');
-    videoBox.style = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.9);
-      padding: 10px;
-      border-radius: 10px;
-      z-index: 9999;
-      text-align: center;
-    `;
-
-    const img = document.createElement('img');
-    img.src = "http://debianRy.local:5001/video_feed?t=" + Date.now();
-    img.style = "width:640px; height:480px; border-radius:8px;";
-    videoBox.appendChild(img);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = "&times;";
-    closeBtn.style = `
-      position:absolute;
-      top:5px;
-      right:10px;
-      background:none;
-      border:none;
-      color:white;
-      font-size:30px;
-      cursor:pointer;
-    `;
-    closeBtn.onclick = () => stopScan(img);
-
-    videoBox.appendChild(closeBtn);
-    document.body.appendChild(videoBox);
+    if (faceStream) {
+      faceStream.src = "http://debianRy.local:5001/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
+    }
+    if (faceModal) {
+      faceModal.classList.add('show');
+    }
     scanBtn.textContent = "Stop Scan";
     isScanning = true;
 
-    autoClose = setTimeout(() => stopScan(img), 10000);
+    autoClose = setTimeout(() => stopScan(), 10000);
   } else {
-    await stopScan(videoBox ? videoBox.querySelector("img") : null);
+    await stopScan();
+  }
+});
+
+if (closeFaceModal) {
+  closeFaceModal.addEventListener('click', () => stopScan());
+}
+if (faceModal) {
+  faceModal.addEventListener('click', (e) => {
+    if (e.target === faceModal) {
+      stopScan();
+    }
+  });
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isScanning) {
+    stopScan();
   }
 });
 </script>
+</body>
+</html>
