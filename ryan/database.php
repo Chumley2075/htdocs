@@ -258,7 +258,6 @@ class database
                 target_username VARCHAR(100) NULL,
                 action_type VARCHAR(64) NOT NULL,
                 details TEXT NULL,
-                ip_address VARCHAR(45) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_action_time (action_type, created_at),
                 INDEX idx_target_time (target_username, created_at)
@@ -317,16 +316,15 @@ class database
         }
     }
 
-    public function logAdminEvent($actorUsername, $actionType, $targetUsername = null, $details = '', $ipAddress = null)
+    public function logAdminEvent($actorUsername, $actionType, $targetUsername = null, $details = '')
     {
         $actor = $actorUsername !== null ? "'" . $this->connection->real_escape_string($actorUsername) . "'" : "NULL";
         $target = $targetUsername !== null ? "'" . $this->connection->real_escape_string($targetUsername) . "'" : "NULL";
         $action = $this->connection->real_escape_string($actionType);
         $detailsVal = $details !== null ? "'" . $this->connection->real_escape_string($details) . "'" : "NULL";
-        $ip = $ipAddress !== null ? "'" . $this->connection->real_escape_string($ipAddress) . "'" : "NULL";
 
-        $query = "INSERT INTO admin_logs (actor_username, target_username, action_type, details, ip_address)
-                  VALUES ($actor, $target, '$action', $detailsVal, $ip)";
+        $query = "INSERT INTO admin_logs (actor_username, target_username, action_type, details)
+                  VALUES ($actor, $target, '$action', $detailsVal)";
         $this->Query($query);
     }
 
@@ -339,7 +337,7 @@ class database
         if ($limit > 1000) {
             $limit = 1000;
         }
-        $query = "SELECT log_id, actor_username, target_username, action_type, details, ip_address, created_at
+        $query = "SELECT log_id, actor_username, target_username, action_type, details, created_at
                   FROM admin_logs
                   ORDER BY created_at DESC, log_id DESC
                   LIMIT $limit";

@@ -43,21 +43,20 @@ exec($cmd . ' 2>&1', $output, $return_code);
 $body = implode("\n", $output);
 
 $actor = $_SESSION['valid_user'];
-$ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
 
 if ($return_code === 0) {
-    $db->logAdminEvent($actor, 'face_deleted', $user_id_raw, 'Deleted face data and retraining started', $ip);
+    $db->logAdminEvent($actor, 'face_deleted', $user_id_raw, 'Deleted face data and retraining started');
     echo "Deleted and retraining started.\n" . $body . "\n";
     exit;
 }
 
 if ($return_code === 1) {
-    $db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'No exact face directory match', $ip);
+    $db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'No exact face directory match');
     http_response_code(404);
     echo "No exact match for user directory. Case-sensitive.\n" . $body . "\n";
     exit;
 }
 
-$db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'Deletion script error', $ip);
+$db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'Deletion script error');
 http_response_code(500);
 echo "Error during deletion.\n" . $body . "\n";

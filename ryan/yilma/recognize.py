@@ -211,7 +211,6 @@ def log_face_scan(label: str):
                 target_username VARCHAR(100) NULL,
                 action_type VARCHAR(64) NOT NULL,
                 details TEXT NULL,
-                ip_address VARCHAR(45) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_action_time (action_type, created_at),
                 INDEX idx_target_time (target_username, created_at)

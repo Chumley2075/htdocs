@@ -44,7 +44,6 @@ if (!$DEV_MODE) {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = isset($_POST['action']) ? $_POST['action'] : '';
-        $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null;
 
         if ($action === 'create_user') {
             $activeTab = 'users';
@@ -96,8 +95,7 @@ if (!$DEV_MODE) {
                             $_SESSION['valid_user'],
                             'user_created',
                             $username,
-                            'roles(admin=' . $is_admin . ',prof=' . $is_prof . ',student=' . $is_student . ')',
-                            $ip
+                            'roles(admin=' . $is_admin . ',prof=' . $is_prof . ',student=' . $is_student . ')'
                         );
                         $message = 'User created successfully.';
                         $messageType = 'success';
@@ -147,8 +145,7 @@ if (!$DEV_MODE) {
                         $_SESSION['valid_user'],
                         'user_updated',
                         $targetUser,
-                        'roles/admin permissions updated',
-                        $ip
+                        'roles/admin permissions updated'
                     );
                     $message = 'User roles/permissions updated.';
                     $messageType = 'success';
@@ -166,7 +163,7 @@ if (!$DEV_MODE) {
                     $messageType = 'error';
                 } else {
                     $db->deleteUserByUsername($targetUser);
-                    $db->logAdminEvent($_SESSION['valid_user'], 'user_deleted', $targetUser, 'Deleted from admin page', $ip);
+                    $db->logAdminEvent($_SESSION['valid_user'], 'user_deleted', $targetUser, 'Deleted from admin page');
                     $message = 'User deleted successfully.';
                     $messageType = 'success';
                 }
@@ -184,7 +181,7 @@ if (!$DEV_MODE) {
                     $messageType = 'error';
                 } else {
                     $db->setDoorState($doorId, 1, 'locked_until_authorized', 'Remotely locked until professor/admin face scan', $_SESSION['valid_user'], $roomNumber);
-                    $db->logAdminEvent($_SESSION['valid_user'], 'door_locked_remote', null, 'Door ' . $doorId . ' locked until professor/admin face scan', $ip);
+                    $db->logAdminEvent($_SESSION['valid_user'], 'door_locked_remote', null, 'Door ' . $doorId . ' locked until professor/admin face scan');
                     $message = 'Door ' . $doorId . ' locked. It will stay locked until an admin/professor face scan is recognized at that door.';
                     $messageType = 'success';
                 }
@@ -202,7 +199,7 @@ if (!$DEV_MODE) {
                     $messageType = 'error';
                 } else {
                     $db->setDoorState($doorId, 0, 'unlocked', 'Remotely unlocked by admin', $_SESSION['valid_user'], $roomNumber);
-                    $db->logAdminEvent($_SESSION['valid_user'], 'door_unlocked_remote', null, 'Door ' . $doorId . ' remotely unlocked', $ip);
+                    $db->logAdminEvent($_SESSION['valid_user'], 'door_unlocked_remote', null, 'Door ' . $doorId . ' remotely unlocked');
                     $message = 'Door ' . $doorId . ' unlocked remotely.';
                     $messageType = 'success';
                 }
@@ -378,7 +375,7 @@ if (!$DEV_MODE) {
                         <label for="deleteUserId">User ID</label>
                         <input type="text" id="deleteUserId" placeholder="Enter user ID">
                         <button class="video-btn danger" id="deleteFaceBtn" type="button" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>Delete Face Data</button>
-                        <div id="deleteFaceStatus" class="message muted">Face deletion updates are shown here.</div>
+         
                     <?php else: ?>
                         <p class="muted">You do not have permission to delete face data.</p>
                     <?php endif; ?>
@@ -389,15 +386,13 @@ if (!$DEV_MODE) {
         <section class="tab-panel<?php echo $activeTab === 'doors' ? ' active' : ''; ?>" id="tab-doors">
             <article class="admin-card wide">
                 <h3>Remote Door Control By Room</h3>
-                <p class="muted">This list is generated from the class rooms in `Classes.roomNumber`.</p>
                 <div class="table-wrap">
                     <table class="admin-table">
                         <thead>
                             <tr>
-                                <th>Door (Room)</th>
+                                <th>Door</th>
                                 <th>Classes</th>
                                 <th>Status</th>
-                                <th>Mode</th>
                                 <th>Reason</th>
                                 <th>Updated</th>
                                 <th>Actions</th>
@@ -405,7 +400,7 @@ if (!$DEV_MODE) {
                         </thead>
                         <tbody>
                             <?php if (empty($doorStates)): ?>
-                                <tr><td colspan="7" class="muted">No class rooms found in Classes table.</td></tr>
+                                <tr><td colspan="6" class="muted">No class rooms found in Classes table.</td></tr>
                             <?php else: ?>
                                 <?php foreach ($doorStates as $door): ?>
                                     <?php $doorLocked = (int)$door['is_locked'] === 1; ?>
@@ -417,7 +412,6 @@ if (!$DEV_MODE) {
                                                 <?php echo $doorLocked ? 'Locked' : 'Unlocked'; ?>
                                             </span>
                                         </td>
-                                        <td><?php echo e($door['lock_mode']); ?></td>
                                         <td class="details"><?php echo e($door['lock_reason']); ?></td>
                                         <td>
                                             <div><?php echo e($door['last_changed_by']); ?></div>
@@ -465,7 +459,7 @@ if (!$DEV_MODE) {
                                 <tr>
                                     <th>Time</th>
                                     <th>Action</th>
-                                    <th>Actor</th>
+                                    <th>User</th>
                                     <th>Target</th>
                                     <th>Details</th>
                                 </tr>
