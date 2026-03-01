@@ -6,10 +6,26 @@ BASE_DIR        = "/var/www/html/htdocs/ryan/yilma"
 TRAINING_ROOT   = f"{BASE_DIR}/training_images"
 TRAIN_DIR       = f"{BASE_DIR}/trainer"
 TRAINER_SCRIPT  = f"{BASE_DIR}/trainer.py"
-EXTRA_FILES     = [
-    f"{TRAIN_DIR}/trainer.yml",
-    f"{TRAIN_DIR}/labels.npy",
-]
+
+
+def clear_directory_contents(path: str):
+    if not os.path.isdir(path):
+        print(f"(skip) Trainer directory not found: {path}")
+        return
+
+    for name in os.listdir(path):
+        target = os.path.join(path, name)
+        try:
+            if os.path.isfile(target) or os.path.islink(target):
+                os.remove(target)
+                print(f"Deleted file: {target}")
+            elif os.path.isdir(target):
+                shutil.rmtree(target)
+                print(f"Deleted directory: {target}")
+        except PermissionError as e:
+            print(f"Permission denied deleting {target}: {e}")
+        except OSError as e:
+            print(f"Could not delete {target}: {e}")
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -45,18 +61,7 @@ def main() -> int:
         print(f"OS error removing {face_dir}: {e}")
         return 2
 
-   
-    for path in EXTRA_FILES:
-        if os.path.isfile(path):
-            try:
-                os.remove(path)
-                print(f"Deleted: {path}")
-            except PermissionError as e:
-                print(f"Permission denied deleting {path}: {e}")
-            except OSError as e:
-                print(f"Could not delete {path}: {e}")
-        else:
-            print(f"(skip) Not found: {path}")
+    clear_directory_contents(TRAIN_DIR)
 
     
     try:
