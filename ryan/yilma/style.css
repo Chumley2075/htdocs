@@ -23,6 +23,56 @@ body {
     overflow-x: hidden;
 }
 
+body.report-page {
+    background:
+        radial-gradient(circle at 12% 12%, rgba(59, 130, 246, 0.16), transparent 28%),
+        radial-gradient(circle at 86% 10%, rgba(14, 165, 233, 0.12), transparent 24%),
+        linear-gradient(180deg, #0f172a 0%, #111827 42%, #172554 100%);
+    background-attachment: fixed;
+    color: #0f172a;
+}
+
+.bg-animation {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.bg-shape {
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(90px);
+    opacity: 0.32;
+    transform: translate3d(0, 0, 0);
+}
+
+.shape-1 {
+    width: 420px;
+    height: 420px;
+    top: -120px;
+    left: -120px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.55) 0%, rgba(59, 130, 246, 0) 72%);
+}
+
+.shape-2 {
+    width: 380px;
+    height: 380px;
+    top: 20%;
+    right: -120px;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.22) 0%, rgba(34, 197, 94, 0) 72%);
+}
+
+.shape-3 {
+    width: 520px;
+    height: 520px;
+    bottom: -220px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(56, 189, 248, 0) 74%);
+}
+
 
 .dashboard-buttons {
     position: fixed;
@@ -142,21 +192,29 @@ select:focus {
 }
 
 
-button,
 .create-btn {
     width: 100%;
     padding: 10px;
-    background: #007BFF;
+    background: #2563eb;
     color: white;
-    border: none;
-    border-radius: 5px;
+    border: 1px solid #1d4ed8;
+    border-radius: 10px;
     cursor: pointer;
     font-weight: bold;
 }
 
-button:hover,
 .create-btn:hover {
-    background: #0056b3;
+    background: #1e40af;
+}
+
+.btn:focus-visible,
+.btn:active {
+    background: #1e293b;
+}
+
+.btn.logout:focus-visible,
+.btn.logout:active {
+    background: #991b1b;
 }
 
 
@@ -174,7 +232,7 @@ button:hover,
 }
 
 .video-btn:hover {
-    background: #2f6fce;
+    background: #1e40af;
 }
 
 .video-box {
@@ -215,6 +273,19 @@ button:hover,
         text-align: center;
     }
 }
+body.report-page #dashboard.report-dashboard {
+    max-width: 1180px;
+    position: relative;
+    z-index: 1;
+    margin: 100px auto 60px;
+    padding: 28px 22px 26px;
+    background: #f8fafc;
+    border: 1px solid rgba(203, 213, 225, 0.92);
+    border-radius: 18px;
+    box-shadow: 0 28px 55px rgba(15, 23, 42, 0.28);
+    backdrop-filter: none;
+}
+
 #dashboard {
     max-width: 1000px;
     margin: 100px auto 60px;
@@ -225,13 +296,150 @@ button:hover,
     backdrop-filter: blur(10px);
 }
 
-
 #dashTitle {
     text-align: center;
     font-size: 1.8rem;
     font-weight: 700;
     color: #fff;
     margin-bottom: 30px;
+}
+
+.report-subtitle {
+    text-align: center;
+    color: #52637a;
+    margin: -16px 0 28px;
+    font-size: 0.98rem;
+}
+
+.report-controls {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 24px;
+}
+
+.report-control label {
+    display: block;
+    margin-bottom: 6px;
+    color: #314155;
+    font-weight: 700;
+}
+
+.report-control select,
+.report-control input {
+    margin: 0;
+    min-height: 46px;
+    border-radius: 10px;
+    border-color: #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+}
+
+.report-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.action-btn,
+.secondary-btn {
+    width: auto;
+    min-width: 150px;
+    padding: 10px 16px;
+    border-radius: 10px;
+}
+
+.secondary-btn {
+    background: #1d4ed8;
+    color: #ffffff;
+    border: 1px solid #1e40af;
+}
+
+.secondary-btn:hover {
+    background: #1e40af;
+}
+
+.report-alert {
+    margin-bottom: 20px;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-weight: 600;
+}
+
+.report-alert.info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+}
+
+.report-alert.error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+
+.report-class-info {
+    background: linear-gradient(180deg, #f8fbff 0%, #f1f5f9 100%);
+    border: 1px solid #dbe6f0;
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 22px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.report-class-info p + p {
+    margin-top: 6px;
+}
+
+.report-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.metric-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 14px 26px rgba(15, 23, 42, 0.08);
+}
+
+.metric-label {
+    display: block;
+    font-size: 0.88rem;
+    color: #5a6c84;
+    margin-bottom: 6px;
+}
+
+.metric-value {
+    font-size: 1.8rem;
+    color: #0f172a;
+}
+
+.report-section {
+    margin-top: 26px;
+}
+
+.section-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.section-heading h3 {
+    color: #0f172a;
+    font-size: 1.1rem;
+}
+
+.section-note {
+    color: #52637a;
+    font-size: 0.9rem;
 }
 
 
@@ -262,13 +470,13 @@ button:hover,
 .class-info {
     text-align: center;
     margin-bottom: 20px;
-    color: #f8fafc;
+    color: #314155;
     font-size: 1rem;
 }
 
 .class-info strong {
     font-size: 1.2rem;
-    color: #fff;
+    color: #0f172a;
 }
 
 table {
@@ -277,11 +485,13 @@ table {
     margin-top: 15px;
     border-radius: 10px;
     overflow: hidden;
+    border: 1px solid #e2e8f0;
+    background: #fff;
 }
 
 thead {
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
+    background: #eaf1f8;
+    color: #0f172a;
 }
 
 thead th {
@@ -292,18 +502,18 @@ thead th {
 }
 
 tbody tr {
-    background: rgba(255, 255, 255, 0.1);
+    background: #fff;
     transition: background 0.2s ease;
 }
 
 tbody tr:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: #f8fbff;
 }
 
 tbody td {
     padding: 10px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    color: #1e293b;
 }
 
 
@@ -320,12 +530,76 @@ tbody td {
     background: #b91c1c;
 }
 
+body.report-page #dashTitle {
+    color: #0f172a;
+}
+
+body.report-page .report-section h3,
+body.report-page .section-heading h3,
+body.report-page .metric-value,
+body.report-page table,
+body.report-page tbody td,
+body.report-page thead th,
+body.report-page .class-info strong {
+    color: #162033;
+}
+
+body.report-page .report-subtitle,
+body.report-page .section-note,
+body.report-page .metric-label,
+body.report-page .class-info,
+body.report-page .report-control label {
+    color: #4d5d73;
+}
+
+body.report-page .dashboard-buttons {
+    z-index: 2;
+}
+
+body.report-page .dashboard-buttons .btn {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
+}
+
+body.report-page .dashboard-buttons .btn:hover {
+    background: #1e293b;
+}
+
+body.report-page .dashboard-buttons .btn.logout {
+    background: #b91c1c;
+}
+
+body.report-page .dashboard-buttons .btn.logout:hover {
+    background: #991b1b;
+}
+
 
 @media (max-width: 768px) {
     #dashboard {
         margin: 80px 16px;
         padding: 16px;
     }
+
+    .report-controls,
+    .report-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .report-actions {
+        flex-direction: column;
+    }
+
+    .action-btn,
+    .secondary-btn {
+        width: 100%;
+    }
+
+    .section-heading {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
     table, thead, tbody, th, td, tr {
         display: block;
         width: 100%;
@@ -348,25 +622,88 @@ tbody td {
     tbody td::before {
         content: attr(data-label);
         font-weight: 600;
-        color: #93c5fd;
+        color: #475569;
+    }
+}
+
+@media print {
+    body {
+        background: #fff;
+        color: #111827;
+    }
+
+    .bg-animation,
+    .dashboard-buttons,
+    .report-controls {
+        display: none !important;
+    }
+
+    #dashboard {
+        margin: 0;
+        max-width: none;
+        box-shadow: none;
+        background: #fff;
+        color: #111827;
+        backdrop-filter: none;
+        padding: 0;
+    }
+
+    #dashTitle,
+    .report-subtitle,
+    .report-class-info,
+    .report-class-info strong,
+    .section-heading h3,
+    .section-note,
+    .metric-label,
+    .metric-value,
+    .class-info,
+    thead,
+    tbody td {
+        color: #111827 !important;
+    }
+
+    .report-class-info,
+    .metric-card,
+    tbody tr,
+    thead {
+        background: #fff !important;
+        border-color: #d1d5db !important;
+    }
+
+    table {
+        border: 1px solid #d1d5db;
+    }
+
+    .report-metrics {
+        page-break-inside: avoid;
     }
 }
 
 /* Admin Console */
 .admin-body {
-    background: radial-gradient(circle at 10% 10%, #1b3f85 0%, #0e2a5f 45%, #091c40 100%);
-    color: #e6efff;
+    background:
+        radial-gradient(circle at 12% 12%, rgba(59, 130, 246, 0.16), transparent 28%),
+        radial-gradient(circle at 86% 10%, rgba(14, 165, 233, 0.12), transparent 24%),
+        linear-gradient(180deg, #0f172a 0%, #111827 42%, #172554 100%);
+    background-attachment: fixed;
+    color: #162033;
 }
 
 .admin-shell {
     max-width: 1200px;
     margin-top: 110px;
-    padding: 0 16px 28px;
+    padding: 28px 22px 30px;
+    position: relative;
+    z-index: 1;
+    background: #f8fafc;
+    border: 1px solid rgba(203, 213, 225, 0.92);
+    border-radius: 18px;
+    box-shadow: 0 28px 55px rgba(15, 23, 42, 0.28);
 }
 
 .admin-alert {
-    border-radius: 10px;
-    padding: 10px 14px;
+    border-radius: 12px;
+    padding: 12px 14px;
     font-weight: 600;
     margin-bottom: 16px;
     border: 1px solid transparent;
@@ -391,31 +728,31 @@ tbody td {
     border-radius: 8px;
     font-size: 1rem;
     line-height: 1;
-    background: rgba(255, 255, 255, 0.18);
+    background: #ffffff;
     color: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(148, 163, 184, 0.55);
 }
 
 .admin-alert-close:hover {
-    background: rgba(255, 255, 255, 0.28);
+    background: #f8fafc;
 }
 
 .admin-alert.success {
-    background: rgba(14, 159, 110, 0.16);
-    border-color: rgba(14, 159, 110, 0.45);
-    color: #d1fae5;
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #047857;
 }
 
 .admin-alert.error {
-    background: rgba(220, 38, 38, 0.18);
-    border-color: rgba(248, 113, 113, 0.5);
-    color: #fee2e2;
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
 }
 
 .admin-alert.info {
-    background: rgba(59, 130, 246, 0.2);
-    border-color: rgba(96, 165, 250, 0.55);
-    color: #dbeafe;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
 }
 
 .admin-tabs {
@@ -426,9 +763,9 @@ tbody td {
 }
 
 .admin-tab {
-    border: 1px solid #335fae;
-    background: rgba(20, 60, 130, 0.55);
-    color: #dfe9ff;
+    border: 1px solid #cbd5e1;
+    background: #e2e8f0;
+    color: #334155;
     padding: 10px 14px;
     border-radius: 10px;
     cursor: pointer;
@@ -436,9 +773,25 @@ tbody td {
     letter-spacing: 0.01em;
 }
 
+.admin-tab:hover,
+.admin-tab:focus-visible {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
 .admin-tab.active {
-    background: linear-gradient(135deg, #2885ff, #1556c2);
-    border-color: #6fb0ff;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: #1d4ed8;
+    color: #fff;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
+}
+
+.admin-tab.active:hover,
+.admin-tab.active:focus-visible,
+.admin-tab.active:active {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: #1d4ed8;
     color: #fff;
 }
 
@@ -458,12 +811,11 @@ tbody td {
 }
 
 .admin-card {
-    background: rgba(14, 36, 79, 0.78);
-    border: 1px solid rgba(109, 150, 226, 0.36);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 14px;
-    padding: 16px;
-    box-shadow: 0 12px 25px rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(8px);
+    padding: 18px;
+    box-shadow: 0 14px 26px rgba(15, 23, 42, 0.08);
 }
 
 .admin-card.wide {
@@ -472,7 +824,7 @@ tbody td {
 
 .admin-card h3 {
     margin-bottom: 12px;
-    color: #f3f8ff;
+    color: #162033;
 }
 
 .stack-form label,
@@ -481,13 +833,16 @@ tbody td {
     display: block;
     margin-bottom: 6px;
     font-weight: 600;
-    color: #cbdcfb;
+    color: #4d5d73;
 }
 
 .stack-form input,
-.admin-card input {
+.admin-card input,
+.admin-card select {
     margin-bottom: 12px;
-    background: rgba(255, 255, 255, 0.96);
+    background: #fff;
+    border-color: #cbd5e1;
+    color: #162033;
 }
 
 .checkbox-grid {
@@ -503,7 +858,7 @@ tbody td {
 }
 
 .checkbox-grid label {
-    color: #dbeafe;
+    color: #334155;
     font-weight: 500;
     font-size: 0.94rem;
 }
@@ -521,18 +876,24 @@ tbody td {
     width: 100%;
     border-collapse: collapse;
     min-width: 760px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
 }
 
 .admin-table th,
 .admin-table td {
-    padding: 10px;
-    border-bottom: 1px solid rgba(148, 184, 255, 0.24);
+    padding: 12px 10px;
+    border-bottom: 1px solid #e2e8f0;
     text-align: left;
     vertical-align: top;
+    color: #334155;
 }
 
 .admin-table thead th {
-    color: #b4ccff;
+    color: #475569;
+    background: #eaf1f8;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -578,6 +939,15 @@ tbody td {
     font-size: 0.86rem;
     border-radius: 8px;
     background: #2563eb;
+    color: #fff;
+    border: 1px solid #1d4ed8;
+}
+
+.mini-btn:hover,
+.mini-btn:focus-visible,
+.mini-btn:active {
+    background: #1e40af;
+    border-color: #1e3a8a;
 }
 
 .mini-btn.danger,
@@ -586,7 +956,11 @@ tbody td {
 }
 
 .mini-btn.danger:hover,
-.video-btn.danger:hover {
+.mini-btn.danger:focus-visible,
+.mini-btn.danger:active,
+.video-btn.danger:hover,
+.video-btn.danger:focus-visible,
+.video-btn.danger:active {
     background: #9f2727;
 }
 
@@ -594,20 +968,20 @@ tbody td {
     display: inline-block;
     padding: 4px 8px;
     border-radius: 999px;
-    background: rgba(37, 99, 235, 0.28);
-    border: 1px solid rgba(96, 165, 250, 0.45);
-    color: #dbeafe;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
     font-size: 0.8rem;
     font-weight: 700;
 }
 
 .subtle {
-    color: #b9cbf5;
+    color: #64748b;
     font-size: 0.86rem;
 }
 
 .muted {
-    color: #c0d1f4;
+    color: #64748b;
 }
 
 .details {
@@ -616,7 +990,7 @@ tbody td {
 }
 
 .door-state {
-    border: 1px solid rgba(109, 150, 226, 0.4);
+    border: 1px solid #dbe6f0;
     border-radius: 12px;
     padding: 12px;
     margin-bottom: 14px;
@@ -625,13 +999,13 @@ tbody td {
 }
 
 .door-state.locked {
-    background: rgba(185, 28, 28, 0.2);
-    border-color: rgba(252, 165, 165, 0.45);
+    background: #fef2f2;
+    border-color: #fecaca;
 }
 
 .door-state.unlocked {
-    background: rgba(3, 105, 161, 0.2);
-    border-color: rgba(125, 211, 252, 0.4);
+    background: #eff6ff;
+    border-color: #bfdbfe;
 }
 
 .door-actions {
@@ -650,15 +1024,41 @@ tbody td {
 }
 
 .door-badge.locked {
-    background: rgba(185, 28, 28, 0.2);
-    border: 1px solid rgba(252, 165, 165, 0.45);
-    color: #fecaca;
+    background: #fee2e2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
 }
 
 .door-badge.unlocked {
-    background: rgba(3, 105, 161, 0.2);
-    border: 1px solid rgba(125, 211, 252, 0.4);
-    color: #bae6fd;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+}
+
+.admin-body #dashTitle {
+    color: #162033;
+}
+
+.admin-body .dashboard-buttons {
+    z-index: 2;
+}
+
+.admin-body .dashboard-buttons .btn {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
+}
+
+.admin-body .dashboard-buttons .btn:hover {
+    background: #1e293b;
+}
+
+.admin-body .dashboard-buttons .btn.logout {
+    background: #b91c1c;
+}
+
+.admin-body .dashboard-buttons .btn.logout:hover {
+    background: #991b1b;
 }
 
 @media (max-width: 1024px) {
@@ -673,7 +1073,8 @@ tbody td {
 
 @media (max-width: 768px) {
     .admin-shell {
-        margin-top: 88px;
+        margin: 88px 16px 28px;
+        padding: 20px 16px 22px;
     }
 
     .checkbox-grid {

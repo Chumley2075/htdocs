@@ -764,10 +764,76 @@ class database
     public function getClassList($profUsername)
     {
         $profUsername = $this->connection->real_escape_string($profUsername);
-        $q = "SELECT class_id, class_name, roomNumber
+        $q = "SELECT c.class_id,
+                     c.class_name,
+                     c.roomNumber,
+                     c.professor_username,
+                     COALESCE(u.full_name, c.professor_username, 'Unassigned') AS professor_name
+              FROM Classes c
+              LEFT JOIN users u
+                ON u.username COLLATE utf8mb4_uca1400_ai_ci = c.professor_username COLLATE utf8mb4_uca1400_ai_ci
+              WHERE c.professor_username = '$profUsername'
+              ORDER BY c.class_name";
+        return $this->QueryAll($q);
+    }
+
+    public function userCanAccessClass($username, $classID)
+    {
+        $classID = (int)$classID;
+        if ($classID <= 0) {
+            return false;
+        }
+        $username = $this->connection->real_escape_string($username);
+        $q = "SELECT class_id
               FROM Classes
-              WHERE professor_username = '$profUsername'
-              ORDER BY class_name";
+              WHERE class_id = $classID
+                AND professor_username = '$username'
+              LIMIT 1";
+        $rows = $this->QueryAll($q);
+        return !empty($rows);
+    }
+
+    public function getClassDetails($classID)
+    {
+        $classID = (int)$classID;
+        $q = "SELECT c.class_id,
+                     c.class_name,
+                     c.roomNumber,
+                     c.professor_username,
+                     COALESCE(u.full_name, c.professor_username, 'Unassigned') AS professor_name
+              FROM Classes c
+              LEFT JOIN users u
+                ON u.username COLLATE utf8mb4_uca1400_ai_ci = c.professor_username COLLATE utf8mb4_uca1400_ai_ci
+              WHERE c.class_id = $classID
+              LIMIT 1";
+        $rows = $this->QueryAll($q);
+        if (!$rows) {
+            return null;
+        }
+        return $rows[0];
+    }
+
+    public function getClassScheduleEntries($classID)
+    {
+        $classID = (int)$classID;
+        $q = "SELECT day_of_week, start_time, end_time
+              FROM ClassSchedule
+              WHERE class_id = $classID
+              ORDER BY FIELD(day_of_week, 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'),
+                       start_time";
+        return $this->QueryAll($q);
+    }
+
+    public function getClassRoster($classID)
+    {
+        $classID = (int)$classID;
+        $q = "SELECT e.student_username,
+                     COALESCE(u.full_name, e.student_username) AS full_name
+              FROM Enrollments e
+              LEFT JOIN users u
+                ON u.username COLLATE utf8mb4_uca1400_ai_ci = e.student_username COLLATE utf8mb4_uca1400_ai_ci
+              WHERE e.class_id = $classID
+              ORDER BY full_name";
         return $this->QueryAll($q);
     }
 
@@ -788,7 +854,13 @@ class database
 
     public function getRosterWithAttendanceToday($classID)
     {
+        return $this->getRosterWithAttendanceOnDate($classID, date('Y-m-d'));
+    }
+
+    public function getRosterWithAttendanceOnDate($classID, $meetingDate)
+    {
         $classID = (int)$classID;
+        $meetingDate = $this->normalizeDateValue($meetingDate);
         $q = "SELECT e.student_username,
                      COALESCE(u.full_name, e.student_username) AS full_name,
                      a.scanned_at
@@ -798,10 +870,40 @@ class database
               LEFT JOIN Attendance a
                 ON a.class_id = e.class_id
                AND a.student_username COLLATE utf8mb4_uca1400_ai_ci = e.student_username COLLATE utf8mb4_uca1400_ai_ci
-               AND a.meeting_date = CURDATE()
+               AND a.meeting_date = '$meetingDate'
               WHERE e.class_id = $classID
               ORDER BY full_name";
         return $this->QueryAll($q);
+    }
+
+    public function getAttendanceForRange($classID, $startDate, $endDate)
+    {
+        $classID = (int)$classID;
+        $startDate = $this->normalizeDateValue($startDate);
+        $endDate = $this->normalizeDateValue($endDate);
+        $q = "SELECT a.meeting_date,
+                     a.student_username,
+                     COALESCE(u.full_name, a.student_username) AS full_name,
+                     MAX(a.scanned_at) AS scanned_at
+              FROM Attendance a
+              LEFT JOIN users u
+                ON u.username COLLATE utf8mb4_uca1400_ai_ci = a.student_username COLLATE utf8mb4_uca1400_ai_ci
+              WHERE a.class_id = $classID
+                AND a.meeting_date BETWEEN '$startDate' AND '$endDate'
+              GROUP BY a.meeting_date,
+                       a.student_username,
+                       u.full_name
+              ORDER BY a.meeting_date ASC, full_name ASC";
+        return $this->QueryAll($q);
+    }
+
+    private function normalizeDateValue($dateValue)
+    {
+        $dateValue = trim((string)$dateValue);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
+            return date('Y-m-d');
+        }
+        return $this->connection->real_escape_string($dateValue);
     }
 
     public function insertAttendance($classID, $username)

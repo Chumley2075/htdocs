@@ -254,6 +254,12 @@ if (!$DEV_MODE) {
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="admin-body">
+    <div class="bg-animation">
+        <div class="bg-shape shape-1"></div>
+        <div class="bg-shape shape-2"></div>
+        <div class="bg-shape shape-3"></div>
+    </div>
+
     <div class="dashboard-buttons">
         <?php if (!$DEV_MODE): ?>
             <a href="mainMenu.php" class="btn">Professor View</a>
