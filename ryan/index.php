@@ -145,32 +145,110 @@ const faceStream = document.getElementById('faceStream');
 
 let isScanning = false;
 let autoClose = null;
+let preparePromise = null;
+let labelPollTimer = null;
+let labelPollInFlight = false;
 
-async function stopScan() {
+function clearLabelPoll() {
+  if (labelPollTimer) {
+    clearTimeout(labelPollTimer);
+    labelPollTimer = null;
+  }
+  labelPollInFlight = false;
+}
+
+function queueAutoClose() {
+  if (autoClose) {
+    clearTimeout(autoClose);
+  }
+  autoClose = setTimeout(() => stopScan(), 8000);
+}
+
+async function prepareScan(forceReload = false) {
+  const url = "http://debianRy.local:5001/prepare_scan?reload=" + (forceReload ? "1" : "0") + "&door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
+  if (!forceReload && preparePromise) {
+    return preparePromise;
+  }
+  const request = fetch(url, { cache: "no-store" }).catch(() => null);
+  if (!forceReload) {
+    preparePromise = request.finally(() => {
+      preparePromise = null;
+    });
+    return preparePromise;
+  }
+  return request;
+}
+
+async function stopScan(recordAttendance = true) {
+  if (!isScanning) {
+    return;
+  }
+  isScanning = false;
+  clearLabelPoll();
   try { await fetch("http://debianRy.local:5001/stop_feed"); } catch(e) {}
-  try { await fetch("labels.php?room=" + encodeURIComponent(ROOM_ID), { cache: "no-store" }); } catch(e) {}
+  if (recordAttendance) {
+    try { await fetch("labels.php?room=" + encodeURIComponent(ROOM_ID), { cache: "no-store" }); } catch(e) {}
+  }
   if (autoClose) { clearTimeout(autoClose); autoClose = null; }
   if (faceStream) faceStream.src = "about:blank";
   if (faceModal) faceModal.classList.remove('show');
   scanBtn.textContent = "Scan Face";
-  isScanning = false;
 }
+
+async function pollForLabel() {
+  if (!isScanning || labelPollInFlight) {
+    return;
+  }
+  labelPollInFlight = true;
+  try {
+    const res = await fetch("http://debianRy.local:5001/label?t=" + Date.now(), { cache: "no-store" });
+    const label = (await res.text()).trim();
+    if (!isScanning || !label || label === "Unknown") {
+      return;
+    }
+    await stopScan(true);
+  } catch (e) {
+  } finally {
+    labelPollInFlight = false;
+    if (isScanning) {
+      labelPollTimer = setTimeout(() => {
+        pollForLabel();
+      }, 300);
+    }
+  }
+}
+
+if (faceStream) {
+  faceStream.addEventListener('load', () => {
+    if (!isScanning) return;
+    scanBtn.textContent = "Stop Scan";
+    if (!autoClose) {
+      queueAutoClose();
+    }
+    if (!labelPollTimer) {
+      labelPollTimer = setTimeout(() => {
+        pollForLabel();
+      }, 300);
+    }
+  });
+}
+
+window.setTimeout(() => {
+  prepareScan();
+}, 250);
 
 scanBtn.addEventListener('click', async () => {
   if (scanBtn.disabled) return;
   if (!isScanning) {
-    scanBtn.textContent = "Loading Trainer...";
-    await fetch("http://debianRy.local:5001/reload_trainer").catch(()=>{});
-    if (faceStream) {
-      faceStream.src = "http://debianRy.local:5001/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
-    }
+    scanBtn.textContent = "Starting Camera...";
     if (faceModal) {
       faceModal.classList.add('show');
     }
-    scanBtn.textContent = "Stop Scan";
+    if (faceStream) {
+      faceStream.src = "http://debianRy.local:5001/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
+    }
+    scanBtn.textContent = "Waiting for Camera...";
     isScanning = true;
-
-    autoClose = setTimeout(() => stopScan(), 10000);
   } else {
     await stopScan();
   }

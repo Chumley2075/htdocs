@@ -402,6 +402,7 @@ if (!$DEV_MODE) {
                         <div class="video-box" id="videoRight">
                             <span id="videoPlaceholder">Face capture feed will appear here</span>
                         </div>
+                        <div class="message" id="captureFaceStatus" aria-live="polite"></div>
                     <?php else: ?>
                         <p class="muted">You do not have permission to manage face data.</p>
                     <?php endif; ?>
@@ -553,6 +554,15 @@ if (!$DEV_MODE) {
             doors: document.getElementById('tab-doors'),
             logs: document.getElementById('tab-logs')
         };
+        let facesWarmupStarted = false;
+
+        const warmupFacesCamera = () => {
+            if (facesWarmupStarted) {
+                return;
+            }
+            facesWarmupStarted = true;
+            fetch('http://debianRy.local:5000/warmup?t=' + Date.now(), { cache: 'no-store' }).catch(() => {});
+        };
 
         tabs.forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -564,8 +574,16 @@ if (!$DEV_MODE) {
                         panels[name].classList.toggle('active', name === tabName);
                     }
                 });
+                if (tabName === 'faces') {
+                    warmupFacesCamera();
+                }
             });
         });
+
+        const activeFacesTab = document.querySelector('.admin-tab.active[data-tab="faces"]');
+        if (activeFacesTab) {
+            warmupFacesCamera();
+        }
     })();
     </script>
 
@@ -575,14 +593,94 @@ if (!$DEV_MODE) {
         const box = document.getElementById('videoRight');
         const idInput = document.getElementById('personIdInput');
         const fullNameInput = document.getElementById('personFullNameInput');
+        const statusEl = document.getElementById('captureFaceStatus');
         let isCapturing = false;
         let imgElement = null;
+        let statusPollTimer = null;
+        let statusPollInFlight = false;
+        let activeCapturePersonId = '';
 
-        if (!btn || !box || !idInput || !fullNameInput) {
+        if (!btn || !box || !idInput || !fullNameInput || !statusEl) {
             return;
         }
 
-        btn.addEventListener('click', () => {
+        const clearStatusPoll = () => {
+            if (statusPollTimer) {
+                window.clearTimeout(statusPollTimer);
+                statusPollTimer = null;
+            }
+            statusPollInFlight = false;
+        };
+
+        const resetCaptureUi = (message) => {
+            if (imgElement) {
+                imgElement.src = '';
+            }
+            box.innerHTML = '<span id="videoPlaceholder">Face capture feed will appear here</span>';
+            btn.textContent = 'Start Capture';
+            isCapturing = false;
+            imgElement = null;
+            activeCapturePersonId = '';
+            if (message) {
+                statusEl.textContent = message;
+            }
+        };
+
+        const stopCapture = async (options = {}) => {
+            const notifyBackend = options.notifyBackend !== false;
+            clearStatusPoll();
+            if (notifyBackend) {
+                try {
+                    await fetch('http://debianRy.local:5000/stop_feed', { cache: 'no-store' });
+                } catch (e) {}
+            }
+            resetCaptureUi(options.message || 'Capture stopped.');
+        };
+
+        const scheduleStatusPoll = () => {
+            clearStatusPoll();
+            if (!isCapturing || !activeCapturePersonId) {
+                return;
+            }
+            statusPollTimer = window.setTimeout(pollCaptureStatus, 350);
+        };
+
+        const pollCaptureStatus = async () => {
+            if (!isCapturing || !activeCapturePersonId || statusPollInFlight) {
+                return;
+            }
+            statusPollInFlight = true;
+            try {
+                const res = await fetch(
+                    'http://debianRy.local:5000/capture_status?person_id=' +
+                    encodeURIComponent(activeCapturePersonId) +
+                    '&t=' + Date.now(),
+                    { cache: 'no-store' }
+                );
+                const data = await res.json();
+                const status = data.status || 'idle';
+                if (data.message) {
+                    statusEl.textContent = data.message;
+                } else if (status === 'capturing') {
+                    statusEl.textContent = 'Capturing face samples...';
+                }
+                if (status === 'completed') {
+                    await stopCapture({ notifyBackend: false, message: data.message || 'Capture complete. Retraining started.' });
+                    return;
+                }
+                if (status === 'stopped' || status === 'error') {
+                    await stopCapture({ notifyBackend: false, message: data.message || 'Capture stopped.' });
+                    return;
+                }
+            } catch (e) {
+                statusEl.textContent = 'Checking capture progress...';
+            } finally {
+                statusPollInFlight = false;
+            }
+            scheduleStatusPoll();
+        };
+
+        btn.addEventListener('click', async () => {
             const personId = idInput.value.trim();
             const fullName = fullNameInput.value.trim();
             if (!isCapturing) {
@@ -590,20 +688,24 @@ if (!$DEV_MODE) {
                     alert('Please enter a Person ID before starting capture.');
                     return;
                 }
+                btn.textContent = 'Starting Capture...';
+                statusEl.textContent = 'Starting capture...';
+                activeCapturePersonId = personId;
                 imgElement = document.createElement('img');
                 imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId) + '&full_name=' + encodeURIComponent(fullName);
                 imgElement.style = 'width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;';
+                imgElement.onerror = () => {
+                    if (isCapturing) {
+                        scheduleStatusPoll();
+                    }
+                };
                 box.innerHTML = '';
                 box.appendChild(imgElement);
                 btn.textContent = 'Stop Capture';
                 isCapturing = true;
+                scheduleStatusPoll();
             } else {
-                if (imgElement) {
-                    imgElement.src = '';
-                    box.innerHTML = '<span id="videoPlaceholder">Face capture feed will appear here</span>';
-                }
-                btn.textContent = 'Start Capture';
-                isCapturing = false;
+                await stopCapture();
             }
         });
     })();

@@ -4,28 +4,7 @@ import sys, os, shutil, subprocess, traceback
 
 BASE_DIR        = "/var/www/html/htdocs/ryan/yilma"
 TRAINING_ROOT   = f"{BASE_DIR}/training_images"
-TRAIN_DIR       = f"{BASE_DIR}/trainer"
 TRAINER_SCRIPT  = f"{BASE_DIR}/trainer.py"
-
-
-def clear_directory_contents(path: str):
-    if not os.path.isdir(path):
-        print(f"(skip) Trainer directory not found: {path}")
-        return
-
-    for name in os.listdir(path):
-        target = os.path.join(path, name)
-        try:
-            if os.path.isfile(target) or os.path.islink(target):
-                os.remove(target)
-                print(f"Deleted file: {target}")
-            elif os.path.isdir(target):
-                shutil.rmtree(target)
-                print(f"Deleted directory: {target}")
-        except PermissionError as e:
-            print(f"Permission denied deleting {target}: {e}")
-        except OSError as e:
-            print(f"Could not delete {target}: {e}")
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -61,21 +40,27 @@ def main() -> int:
         print(f"OS error removing {face_dir}: {e}")
         return 2
 
-    clear_directory_contents(TRAIN_DIR)
-
-    
     try:
-        subprocess.Popen(
+        result = subprocess.run(
             [sys.executable, TRAINER_SCRIPT],
-            cwd=BASE_DIR,                 
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        print("Retraining started in background.")
+        if result.stdout:
+            print(result.stdout.strip())
+        if result.stderr:
+            print(result.stderr.strip())
+        if result.returncode != 0:
+            print(f"Retraining failed with exit code {result.returncode}")
+            return 3
+        print("Retraining completed.")
     except Exception:
         print("Failed to start trainer:")
         traceback.print_exc()
-        
+        return 3
+
     return 0
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 <?php
 session_start();
 header('Content-Type: text/plain');
+ignore_user_abort(true);
+@set_time_limit(0);
 
 require_once '../database.php';
 $db = new database();
@@ -45,8 +47,8 @@ $body = implode("\n", $output);
 $actor = $_SESSION['valid_user'];
 
 if ($return_code === 0) {
-    $db->logAdminEvent($actor, 'face_deleted', $user_id_raw, 'Deleted face data and retraining started');
-    echo "Deleted and retraining started.\n" . $body . "\n";
+    $db->logAdminEvent($actor, 'face_deleted', $user_id_raw, 'Deleted face data and retraining completed');
+    echo "Deleted and retraining completed.\n" . $body . "\n";
     exit;
 }
 
@@ -54,6 +56,13 @@ if ($return_code === 1) {
     $db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'No exact face directory match');
     http_response_code(404);
     echo "No exact match for user directory. Case-sensitive.\n" . $body . "\n";
+    exit;
+}
+
+if ($return_code === 3) {
+    $db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'Face data deleted but retraining failed');
+    http_response_code(500);
+    echo "Face data deleted, but retraining failed.\n" . $body . "\n";
     exit;
 }
 

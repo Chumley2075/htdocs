@@ -1,5 +1,5 @@
 from flask import Flask, Response, render_template_string, make_response, jsonify, request
-from recognize import generate_frames, stop_camera
+from recognize import generate_frames, stop_camera, prepare_scan
 
 app = Flask(__name__)
 
@@ -32,8 +32,18 @@ def stop_feed():
 def reload_trainer():
     from recognize import load_trainer_from_db, stop_camera
     stop_camera()
-    load_trainer_from_db()
+    load_trainer_from_db(force=True)
     return ("Trainer reloaded", 200)
+
+
+@app.route('/prepare_scan')
+def prepare_scan_route():
+    force_reload = request.args.get('reload') == '1'
+    warmed = prepare_scan(force_reload=force_reload)
+    resp = jsonify({"ok": bool(warmed)})
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
 
 @app.route('/label')
 def label():

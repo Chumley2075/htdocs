@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 import cv2, time, os, numpy as np
 from pathlib import Path
+from threading import Lock
 import mysql.connector
+
+from camera_device import open_camera, prewarm_camera
+
 os.umask(0o002)  
 
 CAM_INDEX = 0
@@ -15,6 +19,48 @@ DELAY_BETWEEN_SAVES = 0.05
 prototxt = str(MODELS_DIR / "deploy.prototxt")
 weights = str(MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel")
 net = cv2.dnn.readNetFromCaffe(prototxt, weights)
+cam = None
+_cam_lock = Lock()
+_active_streams = 0
+_state_lock = Lock()
+_capture_state = {
+    "status": "idle",
+    "person_id": "",
+    "full_name": "",
+    "count": 0,
+    "total": TOTAL_SAMPLES,
+    "message": "",
+    "updated_at": 0.0,
+}
+
+
+def set_capture_state(status: str, person_id: str = "", full_name: str = "", count: int = 0, message: str = ""):
+    with _state_lock:
+        _capture_state.update({
+            "status": status,
+            "person_id": person_id,
+            "full_name": full_name,
+            "count": count,
+            "total": TOTAL_SAMPLES,
+            "message": message,
+            "updated_at": time.time(),
+        })
+
+
+def get_capture_status(person_id: str | None = None):
+    with _state_lock:
+        state = dict(_capture_state)
+    if person_id and state.get("person_id") not in ("", person_id):
+        return {
+            "status": "idle",
+            "person_id": person_id,
+            "full_name": "",
+            "count": 0,
+            "total": TOTAL_SAMPLES,
+            "message": "",
+            "updated_at": state.get("updated_at", 0.0),
+        }
+    return state
 
 def upsert_user_profile(person_id: str, full_name: str):
     display_name = (full_name or "").strip()
@@ -125,55 +171,161 @@ def detect_faces_dnn(frame_bgr, conf=CONF_THRESH):
                 boxes.append((x1, y1, x2 - x1, y2 - y1))
     return boxes
 
+
+def warmup_camera():
+    try:
+        if cam is not None and cam.isOpened():
+            return True
+        return prewarm_camera(
+            index=CAM_INDEX,
+            width=1920,
+            height=1080,
+            fps=30,
+            warmup_frames=12,
+            warmup_timeout_s=1.5,
+        )
+    except Exception as e:
+        print(f"[WARN] Camera warmup failed: {e}")
+        return False
+
+
+def stop_camera():
+    global cam
+    with _cam_lock:
+        if cam is not None and cam.isOpened():
+            cam.release()
+        cam = None
+
+
+def stop_capture():
+    state = get_capture_status()
+    if state.get("status") == "capturing":
+        set_capture_state(
+            "stopped",
+            person_id=state.get("person_id", ""),
+            full_name=state.get("full_name", ""),
+            count=state.get("count", 0),
+            message="Capture stopped.",
+        )
+    stop_camera()
+
+
+def acquire_camera():
+    global cam
+    with _cam_lock:
+        if cam is None or not cam.isOpened():
+            cam = open_camera(
+                index=CAM_INDEX,
+                width=1920,
+                height=1080,
+                fps=30,
+                warmup_frames=12,
+                warmup_timeout_s=1.5,
+            )
+        return cam
+
+
+def begin_stream():
+    global _active_streams
+    with _cam_lock:
+        _active_streams += 1
+
+
+def end_stream():
+    global cam, _active_streams
+    with _cam_lock:
+        _active_streams = max(0, _active_streams - 1)
+        if _active_streams == 0 and cam is not None and cam.isOpened():
+            cam.release()
+            cam = None
+
 def generate_frames(person_id: str, full_name: str = ""):
     save_dir = BASE_DIR / person_id
     save_dir.mkdir(parents=True, exist_ok=True)
     upsert_user_profile(person_id, full_name)
-    cam = cv2.VideoCapture(CAM_INDEX)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    cam.set(cv2.CAP_PROP_FPS, 30)
+    set_capture_state(
+        "capturing",
+        person_id=person_id,
+        full_name=full_name,
+        count=0,
+        message="Capturing face samples...",
+    )
+    cam = acquire_camera()
     count = 0
     last_save_ts = 0.0
-    for _ in range(8):
-        cam.read()
-    while True:
-        ok, frame = cam.read()
-        if not ok:
-            break
-        faces = detect_faces_dnn(frame, CONF_THRESH)
-        if not faces:
-            faces = detect_faces_dnn(frame, 0.5)
-        if faces:
-            x, y, w, h = max(faces, key=lambda b: b[2] * b[3])
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 230, 0), 2)
-            now = time.time()
-            if now - last_save_ts >= DELAY_BETWEEN_SAVES and count < TOTAL_SAMPLES:
-                face = frame[y:y + h, x:x + w]
-                gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-                gray = cv2.resize(gray, TARGET_SIZE, interpolation=cv2.INTER_AREA)
-                gray = cv2.equalizeHist(gray)
-                count += 1
-                filename = save_dir / f"{count}.jpg"
-                cv2.imwrite(str(filename), gray)
-                last_save_ts = now
-                cv2.putText(frame, f"Saved {count}/{TOTAL_SAMPLES}", (10, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame_bytes = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        if count >= TOTAL_SAMPLES:
-            cam.release()
-            cam = None
-            log_face_added(person_id)
+    begin_stream()
+    try:
+        while True:
+            ok, frame = cam.read()
+            if not ok:
+                break
+            faces = detect_faces_dnn(frame, CONF_THRESH)
+            if not faces:
+                faces = detect_faces_dnn(frame, 0.5)
+            if faces:
+                x, y, w, h = max(faces, key=lambda b: b[2] * b[3])
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 230, 0), 2)
+                now = time.time()
+                if now - last_save_ts >= DELAY_BETWEEN_SAVES and count < TOTAL_SAMPLES:
+                    face = frame[y:y + h, x:x + w]
+                    gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+                    gray = cv2.resize(gray, TARGET_SIZE, interpolation=cv2.INTER_AREA)
+                    gray = cv2.equalizeHist(gray)
+                    count += 1
+                    filename = save_dir / f"{count}.jpg"
+                    cv2.imwrite(str(filename), gray)
+                    last_save_ts = now
+                    set_capture_state(
+                        "capturing",
+                        person_id=person_id,
+                        full_name=full_name,
+                        count=count,
+                        message=f"Capturing face samples... {count}/{TOTAL_SAMPLES}",
+                    )
+                    cv2.putText(frame, f"Saved {count}/{TOTAL_SAMPLES}", (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            ret, buffer = cv2.imencode('.jpg', frame)
+            if not ret:
+                continue
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            if count >= TOTAL_SAMPLES:
+                log_face_added(person_id)
+                set_capture_state(
+                    "completed",
+                    person_id=person_id,
+                    full_name=full_name,
+                    count=count,
+                    message="Capture complete. Retraining started.",
+                )
 
-            import subprocess, sys
-            subprocess.Popen(
-                [sys.executable, "/var/www/html/htdocs/ryan/yilma/trainer.py"],
-                cwd="/var/www/html/htdocs/ryan/yilma",
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.STDOUT
+                import subprocess, sys
+                subprocess.Popen(
+                    [sys.executable, "/var/www/html/htdocs/ryan/yilma/trainer.py"],
+                    cwd="/var/www/html/htdocs/ryan/yilma",
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.STDOUT
+                )
+
+                return
+    except Exception as e:
+        set_capture_state(
+            "error",
+            person_id=person_id,
+            full_name=full_name,
+            count=count,
+            message=f"Capture failed: {e}",
+        )
+        raise
+    finally:
+        state = get_capture_status(person_id)
+        if state.get("status") == "capturing":
+            set_capture_state(
+                "stopped",
+                person_id=person_id,
+                full_name=full_name,
+                count=count,
+                message="Capture ended before completion.",
             )
-
-            return
+        end_stream()
