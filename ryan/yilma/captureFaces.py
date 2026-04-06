@@ -29,12 +29,20 @@ _capture_state = {
     "full_name": "",
     "count": 0,
     "total": TOTAL_SAMPLES,
+    "account_status": "",
     "message": "",
     "updated_at": 0.0,
 }
 
 
-def set_capture_state(status: str, person_id: str = "", full_name: str = "", count: int = 0, message: str = ""):
+def set_capture_state(
+    status: str,
+    person_id: str = "",
+    full_name: str = "",
+    count: int = 0,
+    account_status: str = "",
+    message: str = "",
+):
     with _state_lock:
         _capture_state.update({
             "status": status,
@@ -42,6 +50,7 @@ def set_capture_state(status: str, person_id: str = "", full_name: str = "", cou
             "full_name": full_name,
             "count": count,
             "total": TOTAL_SAMPLES,
+            "account_status": account_status,
             "message": message,
             "updated_at": time.time(),
         })
@@ -57,6 +66,7 @@ def get_capture_status(person_id: str | None = None):
             "full_name": "",
             "count": 0,
             "total": TOTAL_SAMPLES,
+            "account_status": "",
             "message": "",
             "updated_at": state.get("updated_at", 0.0),
         }
@@ -94,6 +104,8 @@ def upsert_user_profile(person_id: str, full_name: str):
                     """,
                     (display_name, person_id)
                 )
+            conn.commit()
+            return "existing"
         else:
             if not display_name:
                 display_name = person_id
@@ -104,9 +116,11 @@ def upsert_user_profile(person_id: str, full_name: str):
                 """,
                 (person_id, display_name, "")
             )
-        conn.commit()
+            conn.commit()
+            return "created"
     except Exception as e:
         print(f"[WARN] Could not upsert user profile for face capture: {e}")
+        return "unknown"
     finally:
         try:
             conn.close()
@@ -241,13 +255,23 @@ def end_stream():
 def generate_frames(person_id: str, full_name: str = ""):
     save_dir = BASE_DIR / person_id
     save_dir.mkdir(parents=True, exist_ok=True)
-    upsert_user_profile(person_id, full_name)
+    account_status = upsert_user_profile(person_id, full_name)
+    if account_status == "created":
+        capture_message = f"Created account for {person_id}. Capturing facial data..."
+        completed_message = "Created account and added facial data. Retraining started."
+    elif account_status == "existing":
+        capture_message = f"Found existing account for {person_id}. Capturing facial data..."
+        completed_message = "Found existing account and added facial data. Retraining started."
+    else:
+        capture_message = "Capturing face samples..."
+        completed_message = "Capture complete. Retraining started."
     set_capture_state(
         "capturing",
         person_id=person_id,
         full_name=full_name,
         count=0,
-        message="Capturing face samples...",
+        account_status=account_status,
+        message=capture_message,
     )
     cam = acquire_camera()
     count = 0
@@ -279,7 +303,8 @@ def generate_frames(person_id: str, full_name: str = ""):
                         person_id=person_id,
                         full_name=full_name,
                         count=count,
-                        message=f"Capturing face samples... {count}/{TOTAL_SAMPLES}",
+                        account_status=account_status,
+                        message=f"{capture_message} {count}/{TOTAL_SAMPLES}",
                     )
                     cv2.putText(frame, f"Saved {count}/{TOTAL_SAMPLES}", (10, 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
@@ -296,7 +321,8 @@ def generate_frames(person_id: str, full_name: str = ""):
                     person_id=person_id,
                     full_name=full_name,
                     count=count,
-                    message="Capture complete. Retraining started.",
+                    account_status=account_status,
+                    message=completed_message,
                 )
 
                 import subprocess, sys
@@ -314,6 +340,7 @@ def generate_frames(person_id: str, full_name: str = ""):
             person_id=person_id,
             full_name=full_name,
             count=count,
+            account_status=account_status,
             message=f"Capture failed: {e}",
         )
         raise
@@ -325,6 +352,7 @@ def generate_frames(person_id: str, full_name: str = ""):
                 person_id=person_id,
                 full_name=full_name,
                 count=count,
+                account_status=account_status,
                 message="Capture ended before completion.",
             )
         end_stream()

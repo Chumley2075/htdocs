@@ -397,6 +397,20 @@ class database
         return $rows[0];
     }
 
+    public function findUserByUsername($username)
+    {
+        $usernameEsc = $this->connection->real_escape_string($username);
+        $query = "SELECT username, full_name, is_prof, is_admin, is_student
+                  FROM users
+                  WHERE username = '$usernameEsc'
+                  LIMIT 1";
+        $rows = $this->QueryAll($query);
+        if (!$rows || !isset($rows[0])) {
+            return null;
+        }
+        return $rows[0];
+    }
+
     public function updateUserRoles($username, $isProf, $isAdmin, $isStudent, $fullName = null)
     {
         $usernameEsc = $this->connection->real_escape_string($username);

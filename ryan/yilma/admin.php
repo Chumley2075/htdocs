@@ -599,6 +599,7 @@ if (!$DEV_MODE) {
         let statusPollTimer = null;
         let statusPollInFlight = false;
         let activeCapturePersonId = '';
+        const personIdPattern = /^[A-Za-z0-9_]{3,40}$/;
 
         if (!btn || !box || !idInput || !fullNameInput || !statusEl) {
             return;
@@ -641,6 +642,18 @@ if (!$DEV_MODE) {
                 } catch (e) {}
             }
             resetCaptureUi(options.message || 'Capture stopped.');
+        };
+
+        const lookupUser = async (personId) => {
+            const res = await fetch(
+                './faceUserLookup.php?username=' + encodeURIComponent(personId) + '&t=' + Date.now(),
+                { cache: 'no-store' }
+            );
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok || body.ok === false) {
+                throw new Error(body.message || 'Could not verify whether the user already exists.');
+            }
+            return body;
         };
 
         const scheduleStatusPoll = () => {
@@ -694,23 +707,36 @@ if (!$DEV_MODE) {
                     alert('Please enter a Person ID before starting capture.');
                     return;
                 }
+                if (!personIdPattern.test(personId)) {
+                    alert('Username must be 3-40 chars and only letters, numbers, underscore.');
+                    return;
+                }
                 btn.textContent = 'Starting Capture...';
-                statusEl.textContent = 'Starting capture...';
-                activeCapturePersonId = personId;
-                await stopRecognitionFeed();
-                imgElement = document.createElement('img');
-                imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId) + '&full_name=' + encodeURIComponent(fullName);
-                imgElement.style = 'width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;';
-                imgElement.onerror = () => {
-                    if (isCapturing) {
-                        scheduleStatusPoll();
-                    }
-                };
-                box.innerHTML = '';
-                box.appendChild(imgElement);
-                btn.textContent = 'Stop Capture';
-                isCapturing = true;
-                scheduleStatusPoll();
+                statusEl.textContent = 'Checking whether the user already exists...';
+                try {
+                    const lookup = await lookupUser(personId);
+                    statusEl.textContent = lookup.message || 'Starting capture...';
+                    activeCapturePersonId = personId;
+                    await stopRecognitionFeed();
+                    imgElement = document.createElement('img');
+                    imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId) + '&full_name=' + encodeURIComponent(fullName);
+                    imgElement.style = 'width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;';
+                    imgElement.onerror = () => {
+                        if (isCapturing) {
+                            scheduleStatusPoll();
+                        }
+                    };
+                    box.innerHTML = '';
+                    box.appendChild(imgElement);
+                    btn.textContent = 'Stop Capture';
+                    isCapturing = true;
+                    scheduleStatusPoll();
+                } catch (err) {
+                    btn.textContent = 'Start Capture';
+                    statusEl.textContent = err && err.message ? err.message : 'Could not start capture.';
+                    activeCapturePersonId = '';
+                    alert(statusEl.textContent);
+                }
             } else {
                 await stopCapture();
             }
