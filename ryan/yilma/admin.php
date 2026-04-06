@@ -604,6 +604,12 @@ if (!$DEV_MODE) {
             return;
         }
 
+        const stopRecognitionFeed = async () => {
+            try {
+                await fetch('http://debianRy.local:5001/stop_feed?t=' + Date.now(), { cache: 'no-store' });
+            } catch (e) {}
+        };
+
         const clearStatusPoll = () => {
             if (statusPollTimer) {
                 window.clearTimeout(statusPollTimer);
@@ -691,6 +697,7 @@ if (!$DEV_MODE) {
                 btn.textContent = 'Starting Capture...';
                 statusEl.textContent = 'Starting capture...';
                 activeCapturePersonId = personId;
+                await stopRecognitionFeed();
                 imgElement = document.createElement('img');
                 imgElement.src = 'http://debianRy.local:5000/video_feed?person_id=' + encodeURIComponent(personId) + '&full_name=' + encodeURIComponent(fullName);
                 imgElement.style = 'width:100%; height:100%; object-fit:cover; display:block; border-radius:12px;';

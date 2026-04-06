@@ -3,6 +3,13 @@ from recognize import generate_frames, stop_camera, prepare_scan
 
 app = Flask(__name__)
 
+
+@app.after_request
+def add_headers(resp):
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
 @app.route('/')
 def index():
     return render_template_string("""
@@ -21,7 +28,6 @@ def video_feed():
     door_id = request.args.get('door_id')
     resp = Response(generate_frames(door_id=door_id),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
-    resp.headers['Cache-Control'] = 'no-store'
     return resp
 @app.route('/stop_feed')
 def stop_feed():
@@ -41,8 +47,6 @@ def prepare_scan_route():
     force_reload = request.args.get('reload') == '1'
     warmed = prepare_scan(force_reload=force_reload)
     resp = jsonify({"ok": bool(warmed)})
-    resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 @app.route('/label')
@@ -58,8 +62,6 @@ def label():
             txt = "Unknown"
     resp = make_response(txt if txt else "Unknown")
     resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
-    resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 
@@ -80,8 +82,6 @@ def door_state():
             "last_changed_at": None,
         }
     resp = jsonify(state)
-    resp.headers['Cache-Control'] = 'no-store'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
 if __name__ == '__main__':

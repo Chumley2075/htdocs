@@ -149,6 +149,12 @@ let preparePromise = null;
 let labelPollTimer = null;
 let labelPollInFlight = false;
 
+async function stopCaptureFeed() {
+  try {
+    await fetch("http://debianRy.local:5000/stop_feed?t=" + Date.now(), { cache: "no-store" });
+  } catch(e) {}
+}
+
 function clearLabelPoll() {
   if (labelPollTimer) {
     clearTimeout(labelPollTimer);
@@ -169,7 +175,10 @@ async function prepareScan(forceReload = false) {
   if (!forceReload && preparePromise) {
     return preparePromise;
   }
-  const request = fetch(url, { cache: "no-store" }).catch(() => null);
+  const request = (async () => {
+    await stopCaptureFeed();
+    return fetch(url, { cache: "no-store" }).catch(() => null);
+  })();
   if (!forceReload) {
     preparePromise = request.finally(() => {
       preparePromise = null;
@@ -244,6 +253,7 @@ scanBtn.addEventListener('click', async () => {
     if (faceModal) {
       faceModal.classList.add('show');
     }
+    await prepareScan(true);
     if (faceStream) {
       faceStream.src = "http://debianRy.local:5001/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
     }

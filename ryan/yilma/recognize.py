@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import mysql.connector
 
-from camera_device import open_camera, prewarm_camera
+from camera_device import open_camera, prewarm_camera, release_camera
 from depth_helper import DepthHelper
 
 MODELS_DIR = Path("models")
@@ -114,8 +114,7 @@ def load_trainer_from_db(force=False):
 def stop_camera():
     global cam
     with _cam_lock:
-        if cam is not None and cam.isOpened():
-            cam.release()
+        release_camera(cam)
         cam = None
 
 
@@ -162,7 +161,7 @@ def end_stream():
     with _cam_lock:
         _active_streams = max(0, _active_streams - 1)
         if _active_streams == 0 and cam is not None and cam.isOpened():
-            cam.release()
+            release_camera(cam)
             cam = None
 
 

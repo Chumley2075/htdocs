@@ -4,6 +4,10 @@ import time
 
 import cv2
 
+CAMERA_RELEASE_COOLDOWN_S = 0.2
+CAMERA_OPEN_RETRY_TIMEOUT_S = 4.0
+CAMERA_OPEN_RETRY_INTERVAL_S = 0.2
+
 
 class CameraOpenError(RuntimeError):
     pass
@@ -52,6 +56,16 @@ def _candidate_indexes(preferred_index: int) -> list[int]:
     return candidates
 
 
+def release_camera(cam, cooldown_s=CAMERA_RELEASE_COOLDOWN_S):
+    try:
+        if cam is not None and cam.isOpened():
+            cam.release()
+    except Exception:
+        pass
+    if cooldown_s > 0:
+        time.sleep(cooldown_s)
+
+
 def _try_open_once(
     index=0,
     width=None,
@@ -62,10 +76,7 @@ def _try_open_once(
 ):
     cam = cv2.VideoCapture(index)
     if not cam.isOpened():
-        try:
-            cam.release()
-        except Exception:
-            pass
+        release_camera(cam, cooldown_s=0)
         raise CameraOpenError(_build_open_error(index))
     if width is not None:
         cam.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -76,10 +87,7 @@ def _try_open_once(
     warmed = warm_camera(cam, warmup_frames=warmup_frames, warmup_timeout_s=warmup_timeout_s)
     if not warmed:
         device_path = _video_device_path(index)
-        try:
-            cam.release()
-        except Exception:
-            pass
+        release_camera(cam)
         raise CameraOpenError(
             f"Camera index {index} opened at {device_path} but did not produce frames during warmup. "
             "The device may be busy, blocked, or not streaming correctly."
@@ -94,9 +102,31 @@ def open_camera(
     fps=None,
     warmup_frames=12,
     warmup_timeout_s=1.5,
+    retry_timeout_s=CAMERA_OPEN_RETRY_TIMEOUT_S,
+    retry_interval_s=CAMERA_OPEN_RETRY_INTERVAL_S,
 ):
     errors = []
+    retry_deadline = time.time() + max(0.0, retry_timeout_s)
+
+    while True:
+        try:
+            return _try_open_once(
+                index=index,
+                width=width,
+                height=height,
+                fps=fps,
+                warmup_frames=warmup_frames,
+                warmup_timeout_s=warmup_timeout_s,
+            )
+        except CameraOpenError as exc:
+            errors = [str(exc)]
+            if time.time() >= retry_deadline:
+                break
+            time.sleep(max(0.05, retry_interval_s))
+
     for candidate_index in _candidate_indexes(index):
+        if candidate_index == index:
+            continue
         try:
             cam = _try_open_once(
                 index=candidate_index,
@@ -106,15 +136,13 @@ def open_camera(
                 warmup_frames=warmup_frames,
                 warmup_timeout_s=warmup_timeout_s,
             )
-            if candidate_index != index:
-                print(
-                    f"[INFO] Falling back from camera index {index} to working camera index {candidate_index}",
-                    flush=True,
-                )
+            print(
+                f"[INFO] Falling back from camera index {index} to working camera index {candidate_index}",
+                flush=True,
+            )
             return cam
         except CameraOpenError as exc:
             errors.append(str(exc))
-            continue
     raise CameraOpenError(" | ".join(errors) if errors else _build_open_error(index))
 
 
@@ -153,8 +181,4 @@ def prewarm_camera(
         print(f"[WARN] Camera prewarm failed: {exc}")
         return False
     finally:
-        try:
-            if cam is not None and cam.isOpened():
-                cam.release()
-        except Exception:
-            pass
+        release_camera(cam)
