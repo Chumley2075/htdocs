@@ -283,6 +283,10 @@ class database
         $this->ensureColumnIfMissing('user_permissions', 'can_manage_doors', "TINYINT(1) NOT NULL DEFAULT 0");
         $this->ensureColumnIfMissing('user_permissions', 'can_view_logs', "TINYINT(1) NOT NULL DEFAULT 1");
         $this->ensureColumnIfMissing('door_control_rooms', 'unlock_until', "DATETIME NULL");
+        $this->ensureIndexIfMissing('admin_logs', 'idx_action_time', "`action_type`, `created_at`");
+        $this->ensureIndexIfMissing('admin_logs', 'idx_target_time', "`target_username`, `created_at`");
+        $this->ensureIndexIfMissing('admin_logs', 'idx_actor_time', "`actor_username`, `created_at`");
+        $this->ensureIndexIfMissing('admin_logs', 'idx_created_id', "`created_at`, `log_id`");
 
         $this->Query("
             INSERT INTO door_control_rooms (door_id, room_number, is_locked, lock_mode, lock_reason, unlock_until, last_changed_by)
@@ -329,6 +333,23 @@ class database
         }
     }
 
+    private function ensureIndexIfMissing($table, $indexName, $columnsSql)
+    {
+        $tableEsc = $this->connection->real_escape_string($table);
+        $indexEsc = $this->connection->real_escape_string($indexName);
+        $dbEsc = $this->connection->real_escape_string($this->db);
+        $q = "SELECT INDEX_NAME
+              FROM INFORMATION_SCHEMA.STATISTICS
+              WHERE TABLE_SCHEMA = '$dbEsc'
+                AND TABLE_NAME = '$tableEsc'
+                AND INDEX_NAME = '$indexEsc'
+              LIMIT 1";
+        $rows = $this->QueryAll($q);
+        if (!$rows) {
+            $this->Query("ALTER TABLE `$tableEsc` ADD INDEX `$indexEsc` ($columnsSql)");
+        }
+    }
+
     public function logAdminEvent($actorUsername, $actionType, $targetUsername = null, $details = '')
     {
         $actor = $actorUsername !== null ? "'" . $this->connection->real_escape_string($actorUsername) . "'" : "NULL";
@@ -341,19 +362,127 @@ class database
         $this->Query($query);
     }
 
-    public function getAdminLogs($limit = 200)
+    private function normalizeAdminLogFilters($limitOrOptions = 200)
     {
-        $limit = (int)$limit;
+        $options = is_array($limitOrOptions) ? $limitOrOptions : ['limit' => $limitOrOptions];
+        $limit = isset($options['limit']) ? (int)$options['limit'] : 200;
         if ($limit < 1) {
             $limit = 200;
         }
         if ($limit > 1000) {
             $limit = 1000;
         }
-        $query = "SELECT log_id, actor_username, target_username, action_type, details, created_at
+        $offset = isset($options['offset']) ? (int)$options['offset'] : 0;
+        if ($offset < 0) {
+            $offset = 0;
+        }
+        $sortMap = [
+            'log_id' => 'log_id',
+            'created_at' => 'created_at',
+            'action_type' => 'action_type',
+            'actor_username' => 'actor_username',
+            'target_username' => 'target_username',
+        ];
+        $sort = isset($options['sort']) ? (string)$options['sort'] : 'created_at';
+        if (!isset($sortMap[$sort])) {
+            $sort = 'created_at';
+        }
+        $direction = isset($options['direction']) ? strtoupper((string)$options['direction']) : 'DESC';
+        if ($direction !== 'ASC' && $direction !== 'DESC') {
+            $direction = 'DESC';
+        }
+
+        return [
+            'limit' => $limit,
+            'offset' => $offset,
+            'sort' => $sort,
+            'sort_sql' => $sortMap[$sort],
+            'direction' => $direction,
+            'search' => trim(isset($options['search']) ? (string)$options['search'] : ''),
+            'action_type' => trim(isset($options['action_type']) ? (string)$options['action_type'] : ''),
+            'actor_username' => trim(isset($options['actor_username']) ? (string)$options['actor_username'] : ''),
+            'target_username' => trim(isset($options['target_username']) ? (string)$options['target_username'] : ''),
+        ];
+    }
+
+    private function buildAdminLogWhereClause($limitOrOptions = 200)
+    {
+        $filters = $this->normalizeAdminLogFilters($limitOrOptions);
+        $conditions = [];
+
+        if ($filters['search'] !== '') {
+            $searchEsc = $this->connection->real_escape_string($filters['search']);
+            $searchLike = $this->connection->real_escape_string('%' . $filters['search'] . '%');
+            $searchParts = [
+                "action_type LIKE '$searchLike'",
+                "actor_username LIKE '$searchLike'",
+                "target_username LIKE '$searchLike'",
+                "details LIKE '$searchLike'",
+            ];
+            if (ctype_digit($filters['search'])) {
+                $searchParts[] = "log_id = " . (int)$filters['search'];
+            }
+            $searchParts[] = "DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') LIKE '$searchLike'";
+            $conditions[] = '(' . implode(' OR ', $searchParts) . ')';
+        }
+
+        if ($filters['action_type'] !== '') {
+            $actionEsc = $this->connection->real_escape_string($filters['action_type']);
+            $conditions[] = "action_type = '$actionEsc'";
+        }
+
+        if ($filters['actor_username'] !== '') {
+            $actorLike = $this->connection->real_escape_string($filters['actor_username'] . '%');
+            $conditions[] = "actor_username LIKE '$actorLike'";
+        }
+
+        if ($filters['target_username'] !== '') {
+            $targetLike = $this->connection->real_escape_string($filters['target_username'] . '%');
+            $conditions[] = "target_username LIKE '$targetLike'";
+        }
+
+        if (!$conditions) {
+            return '';
+        }
+
+        return ' WHERE ' . implode(' AND ', $conditions);
+    }
+
+    public function countAdminLogs($limitOrOptions = 200)
+    {
+        $query = "SELECT COUNT(*) AS total
+                  FROM admin_logs" . $this->buildAdminLogWhereClause($limitOrOptions);
+        $rows = $this->QueryAll($query);
+        if (!$rows || !isset($rows[0]['total'])) {
+            return 0;
+        }
+        return (int)$rows[0]['total'];
+    }
+
+    public function getAdminLogActionTypes()
+    {
+        $query = "SELECT action_type, COUNT(*) AS total
                   FROM admin_logs
-                  ORDER BY created_at DESC, log_id DESC
-                  LIMIT $limit";
+                  GROUP BY action_type
+                  ORDER BY action_type ASC";
+        return $this->QueryAll($query);
+    }
+
+    public function getAdminLogs($limitOrOptions = 200)
+    {
+        $filters = $this->normalizeAdminLogFilters($limitOrOptions);
+        $orderBy = $filters['sort_sql'] . ' ' . $filters['direction'];
+        if ($filters['sort_sql'] !== 'created_at') {
+            $orderBy .= ', created_at DESC';
+        }
+        if ($filters['sort_sql'] !== 'log_id') {
+            $orderBy .= ', log_id DESC';
+        }
+        $query = "SELECT log_id, actor_username, target_username, action_type, details, created_at
+                  FROM admin_logs" .
+                  $this->buildAdminLogWhereClause($filters) . "
+                  ORDER BY $orderBy
+                  LIMIT {$filters['limit']} OFFSET {$filters['offset']}";
         return $this->QueryAll($query);
     }
 

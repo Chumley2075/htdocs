@@ -12,12 +12,72 @@ function e($v)
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
+function adminUrl($params = [])
+{
+    $query = array_merge($_GET, $params);
+    foreach ($query as $key => $value) {
+        if ($value === null || $value === '') {
+            unset($query[$key]);
+        }
+    }
+    $query['tab'] = isset($query['tab']) ? $query['tab'] : 'users';
+    $qs = http_build_query($query);
+    return './admin.php' . ($qs !== '' ? '?' . $qs : '');
+}
+
+function logSortUrl($column, $currentSort, $currentDir)
+{
+    $nextDir = ($currentSort === $column && strtolower((string)$currentDir) === 'asc') ? 'desc' : 'asc';
+    return adminUrl([
+        'tab' => 'logs',
+        'log_sort' => $column,
+        'log_dir' => $nextDir,
+        'log_page' => 1,
+    ]);
+}
+
+function logSortIndicator($column, $currentSort, $currentDir)
+{
+    if ($column !== $currentSort) {
+        return '';
+    }
+    return strtoupper((string)$currentDir) === 'ASC' ? '^' : 'v';
+}
+
+$allowedTabs = ['users', 'faces', 'doors', 'logs'];
+if (!in_array($activeTab, $allowedTabs, true)) {
+    $activeTab = 'users';
+}
+
 $db = null;
 $currentUser = isset($_SESSION['valid_user']) ? $_SESSION['valid_user'] : '';
 $canManageUsers = true;
 $canManageFaces = true;
 $canManageDoors = true;
 $canViewLogs = true;
+$logs = [];
+$logActionOptions = [];
+$logTotal = 0;
+$logTotalPages = 1;
+$logOffset = 0;
+$logSearch = trim(isset($_GET['log_search']) ? (string)$_GET['log_search'] : '');
+$logAction = trim(isset($_GET['log_action']) ? (string)$_GET['log_action'] : '');
+$logActor = trim(isset($_GET['log_actor']) ? (string)$_GET['log_actor'] : '');
+$logTarget = trim(isset($_GET['log_target']) ? (string)$_GET['log_target'] : '');
+$logSort = isset($_GET['log_sort']) ? (string)$_GET['log_sort'] : 'created_at';
+$logDir = isset($_GET['log_dir']) ? strtolower((string)$_GET['log_dir']) : 'desc';
+$logPage = isset($_GET['log_page']) ? (int)$_GET['log_page'] : 1;
+$logLimit = isset($_GET['log_limit']) ? (int)$_GET['log_limit'] : 100;
+$allowedLogLimits = [50, 100, 250, 500];
+if (!in_array($logLimit, $allowedLogLimits, true)) {
+    $logLimit = 100;
+}
+if ($logDir !== 'asc' && $logDir !== 'desc') {
+    $logDir = 'desc';
+}
+if ($logPage < 1) {
+    $logPage = 1;
+}
 
 if (isset($_SESSION['admin_flash']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $message = isset($_SESSION['admin_flash']['message']) ? (string)$_SESSION['admin_flash']['message'] : '';
@@ -234,15 +294,36 @@ if (!$DEV_MODE) {
 
     $users = $db->getUsersWithPermissions();
     $doorStates = $db->getDoorStatesForClassRooms();
-    $logs = $canViewLogs ? $db->getAdminLogs(250) : [];
+    if ($canViewLogs) {
+        $logFilters = [
+            'search' => $logSearch,
+            'action_type' => $logAction,
+            'actor_username' => $logActor,
+            'target_username' => $logTarget,
+        ];
+        $logTotal = $db->countAdminLogs($logFilters);
+        $logTotalPages = max(1, (int)ceil($logTotal / $logLimit));
+        if ($logPage > $logTotalPages) {
+            $logPage = $logTotalPages;
+        }
+        $logOffset = ($logPage - 1) * $logLimit;
+        $logs = $db->getAdminLogs(array_merge($logFilters, [
+            'limit' => $logLimit,
+            'offset' => $logOffset,
+            'sort' => $logSort,
+            'direction' => $logDir,
+        ]));
+        $logActionOptions = $db->getAdminLogActionTypes();
+    }
 } else {
     $users = [];
     $doorStates = [];
-    $logs = [];
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'DEV_MODE is ON: actions disabled.';
     }
 }
+$logShowingStart = $logTotal > 0 ? ($logOffset + 1) : 0;
+$logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
 ?>
 <!DOCTYPE html>
 <html>
@@ -495,23 +576,130 @@ if (!$DEV_MODE) {
                 <?php if (!$canViewLogs && !$DEV_MODE): ?>
                     <p class="muted">You do not have permission to view logs.</p>
                 <?php else: ?>
+                    <form method="GET" class="logs-toolbar">
+                        <input type="hidden" name="tab" value="logs">
+                        <div class="logs-toolbar-row">
+                            <div class="logs-field logs-field-search">
+                                <label for="logSearchInput">Search</label>
+                                <input
+                                    type="text"
+                                    id="logSearchInput"
+                                    name="log_search"
+                                    value="<?php echo e($logSearch); ?>"
+                                    placeholder="Log ID, action, user, target, details"
+                                >
+                            </div>
+                            <div class="logs-field">
+                                <label for="logActionSelect">Action</label>
+                                <select id="logActionSelect" name="log_action">
+                                    <option value="">All actions</option>
+                                    <?php foreach ($logActionOptions as $actionRow): ?>
+                                        <?php $actionName = isset($actionRow['action_type']) ? (string)$actionRow['action_type'] : ''; ?>
+                                        <option value="<?php echo e($actionName); ?>" <?php echo $logAction === $actionName ? 'selected' : ''; ?>>
+                                            <?php echo e($actionName); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="logs-field">
+                                <label for="logActorInput">Actor</label>
+                                <input
+                                    type="text"
+                                    id="logActorInput"
+                                    name="log_actor"
+                                    value="<?php echo e($logActor); ?>"
+                                    placeholder="Starts with username"
+                                >
+                            </div>
+                            <div class="logs-field">
+                                <label for="logTargetInput">Target</label>
+                                <input
+                                    type="text"
+                                    id="logTargetInput"
+                                    name="log_target"
+                                    value="<?php echo e($logTarget); ?>"
+                                    placeholder="Starts with username"
+                                >
+                            </div>
+                            <div class="logs-field logs-field-small">
+                                <label for="logLimitSelect">Rows</label>
+                                <select id="logLimitSelect" name="log_limit">
+                                    <?php foreach ($allowedLogLimits as $limitOption): ?>
+                                        <option value="<?php echo e($limitOption); ?>" <?php echo $logLimit === $limitOption ? 'selected' : ''; ?>>
+                                            <?php echo e($limitOption); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="logs-toolbar-footer">
+                            <div class="logs-summary">
+                                <span class="logs-summary-pill">
+                                    Showing <?php echo e($logShowingStart); ?>-<?php echo e($logShowingEnd); ?> of <?php echo e($logTotal); ?>
+                                </span>
+                            </div>
+                            <div class="logs-actions">
+                                <button type="submit" class="mini-btn">Apply</button>
+                                <a href="<?php echo e(adminUrl([
+                                    'tab' => 'logs',
+                                    'log_search' => null,
+                                    'log_action' => null,
+                                    'log_actor' => null,
+                                    'log_target' => null,
+                                    'log_sort' => null,
+                                    'log_dir' => null,
+                                    'log_page' => null,
+                                    'log_limit' => 100,
+                                ])); ?>" class="mini-btn ghost-btn">Clear</a>
+                            </div>
+                        </div>
+                    </form>
+
                     <div class="table-wrap">
                         <table class="admin-table">
                             <thead>
                                 <tr>
-                                    <th>Time</th>
-                                    <th>Action</th>
-                                    <th>User</th>
-                                    <th>Target</th>
+                                    <th>
+                                        <a class="sort-link" href="<?php echo e(logSortUrl('log_id', $logSort, $logDir)); ?>">
+                                            ID
+                                            <span class="sort-indicator"><?php echo e(logSortIndicator('log_id', $logSort, $logDir)); ?></span>
+                                        </a>
+                                    </th>
+                                    <th>
+                                        <a class="sort-link" href="<?php echo e(logSortUrl('created_at', $logSort, $logDir)); ?>">
+                                            Time
+                                            <span class="sort-indicator"><?php echo e(logSortIndicator('created_at', $logSort, $logDir)); ?></span>
+                                        </a>
+                                    </th>
+                                    <th>
+                                        <a class="sort-link" href="<?php echo e(logSortUrl('action_type', $logSort, $logDir)); ?>">
+                                            Action
+                                            <span class="sort-indicator"><?php echo e(logSortIndicator('action_type', $logSort, $logDir)); ?></span>
+                                        </a>
+                                    </th>
+                                    <th>
+                                        <a class="sort-link" href="<?php echo e(logSortUrl('actor_username', $logSort, $logDir)); ?>">
+                                            User
+                                            <span class="sort-indicator"><?php echo e(logSortIndicator('actor_username', $logSort, $logDir)); ?></span>
+                                        </a>
+                                    </th>
+                                    <th>
+                                        <a class="sort-link" href="<?php echo e(logSortUrl('target_username', $logSort, $logDir)); ?>">
+                                            Target
+                                            <span class="sort-indicator"><?php echo e(logSortIndicator('target_username', $logSort, $logDir)); ?></span>
+                                        </a>
+                                    </th>
                                     <th>Details</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($logs)): ?>
-                                    <tr><td colspan="5" class="muted">No logs available.</td></tr>
+                                    <tr><td colspan="6" class="muted">No logs match the current filters.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($logs as $log): ?>
                                         <tr>
+                                            <td><?php echo e($log['log_id']); ?></td>
                                             <td><?php echo e($log['created_at']); ?></td>
                                             <td><span class="log-tag"><?php echo e($log['action_type']); ?></span></td>
                                             <td><?php echo e($log['actor_username'] !== null ? $log['actor_username'] : '-'); ?></td>
@@ -522,6 +710,32 @@ if (!$DEV_MODE) {
                                 <?php endif; ?>
                             </tbody>
                         </table>
+                    </div>
+
+                    <div class="table-meta table-meta-pagination">
+                        <div>Page <?php echo e($logPage); ?> of <?php echo e($logTotalPages); ?></div>
+                        <div class="pagination-actions">
+                            <a
+                                href="<?php echo e(adminUrl([
+                                    'tab' => 'logs',
+                                    'log_page' => $logPage > 1 ? ($logPage - 1) : 1,
+                                ])); ?>"
+                                class="mini-btn ghost-btn<?php echo $logPage <= 1 ? ' disabled-link' : ''; ?>"
+                                <?php echo $logPage <= 1 ? 'aria-disabled="true" tabindex="-1"' : ''; ?>
+                            >
+                                Previous
+                            </a>
+                            <a
+                                href="<?php echo e(adminUrl([
+                                    'tab' => 'logs',
+                                    'log_page' => $logPage < $logTotalPages ? ($logPage + 1) : $logTotalPages,
+                                ])); ?>"
+                                class="mini-btn ghost-btn<?php echo $logPage >= $logTotalPages ? ' disabled-link' : ''; ?>"
+                                <?php echo $logPage >= $logTotalPages ? 'aria-disabled="true" tabindex="-1"' : ''; ?>
+                            >
+                                Next
+                            </a>
+                        </div>
                     </div>
                 <?php endif; ?>
             </article>

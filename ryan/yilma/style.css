@@ -872,6 +872,101 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     overflow-x: auto;
 }
 
+.logs-toolbar {
+    margin-bottom: 18px;
+    padding: 16px 18px;
+    border: 1px solid #dbe6f3;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f2f7fd 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.logs-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.logs-field {
+    display: grid;
+    gap: 6px;
+    flex: 1 1 180px;
+}
+
+.logs-field-search {
+    flex: 2.2 1 340px;
+    min-width: 300px;
+}
+
+.logs-field-small {
+    flex: 0 0 92px;
+    min-width: 92px;
+}
+
+.logs-toolbar .logs-field label {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #5f7086;
+}
+
+.logs-toolbar .logs-field input,
+.logs-toolbar .logs-field select {
+    margin: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #c7d5e6;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #162033;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.logs-toolbar .logs-field input::placeholder {
+    color: #7b8ca3;
+}
+
+.logs-toolbar-footer {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.logs-summary {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.logs-summary-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #d5e1ef;
+    color: #334155;
+    font-size: 0.9rem;
+}
+
+.logs-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .admin-table {
     width: 100%;
     border-collapse: collapse;
@@ -897,6 +992,27 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
+}
+
+.admin-table thead .sort-link {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    color: #334155;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.admin-table thead .sort-link:hover,
+.admin-table thead .sort-link:focus-visible {
+    color: #1d4ed8;
+    text-decoration: none;
+}
+
+.sort-indicator {
+    min-width: 18px;
+    font-size: 0.72rem;
+    color: #1d4ed8;
 }
 
 .inline-form {
@@ -950,6 +1066,26 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     border-color: #1e3a8a;
 }
 
+.ghost-btn {
+    background: #fff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    text-decoration: none;
+}
+
+.ghost-btn:hover,
+.ghost-btn:focus-visible,
+.ghost-btn:active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1e40af;
+}
+
+.disabled-link {
+    pointer-events: none;
+    opacity: 0.55;
+}
+
 .mini-btn.danger,
 .video-btn.danger {
     background: #c53030;
@@ -982,6 +1118,27 @@ body.report-page .dashboard-buttons .btn.logout:hover {
 
 .muted {
     color: #64748b;
+}
+
+.table-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 0 0 12px;
+    color: #64748b;
+    font-size: 0.92rem;
+}
+
+.table-meta-pagination {
+    margin: 14px 0 0;
+    align-items: center;
+}
+
+.pagination-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
 }
 
 .details {
@@ -1069,6 +1226,10 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     .admin-card.wide {
         grid-column: auto;
     }
+
+    .logs-toolbar-row {
+        gap: 10px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -1083,5 +1244,27 @@ body.report-page .dashboard-buttons .btn.logout:hover {
 
     .admin-table {
         min-width: 640px;
+    }
+
+    .logs-toolbar-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .logs-field,
+    .logs-field-search,
+    .logs-field-small {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .logs-toolbar-footer,
+    .logs-summary,
+    .logs-actions {
+        align-items: stretch;
+    }
+
+    .logs-actions {
+        justify-content: flex-start;
     }
 }
