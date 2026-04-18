@@ -28,31 +28,48 @@ function formatPercent($value)
     return number_format((float)$value, 1) . '%';
 }
 
-function buildReportRange($period, $anchorDate)
+function parseDateOrFallback($dateValue, DateTimeImmutable $fallback)
 {
-    $allowedPeriods = ['day', 'week', 'month'];
+    $value = trim((string)$dateValue);
+    $parsed = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+    if (!$parsed || $parsed->format('Y-m-d') !== $value) {
+        return $fallback;
+    }
+    return $parsed;
+}
+
+function buildReportRange($period, $dayDate, $customStartDate, $customEndDate)
+{
+    $allowedPeriods = ['day', 'last7', 'custom'];
     if (!in_array($period, $allowedPeriods, true)) {
         $period = 'day';
     }
 
     $today = new DateTimeImmutable('today');
-    $anchor = DateTimeImmutable::createFromFormat('Y-m-d', (string)$anchorDate);
-    if (!$anchor) {
-        $anchor = $today;
+    $dayAnchor = parseDateOrFallback($dayDate, $today);
+    $customStart = parseDateOrFallback($customStartDate, $today->modify('-6 days'));
+    $customEnd = parseDateOrFallback($customEndDate, $today);
+
+    if ($customStart > $customEnd) {
+        $swap = $customStart;
+        $customStart = $customEnd;
+        $customEnd = $swap;
     }
 
-    if ($period === 'week') {
+    if ($period === 'last7') {
         $anchor = $today;
-        $start = $anchor->modify('-6 days');
-        $end = $anchor;
+        $start = $today->modify('-6 days');
+        $end = $today;
         $title = 'Last 7 Days';
-    } elseif ($period === 'month') {
-        $start = $anchor->modify('first day of this month');
-        $end = $anchor;
-        $title = 'Month To Date';
+    } elseif ($period === 'custom') {
+        $anchor = $customEnd;
+        $start = $customStart;
+        $end = $customEnd;
+        $title = 'Custom Range';
     } else {
-        $start = $anchor;
-        $end = $anchor;
+        $anchor = $dayAnchor;
+        $start = $dayAnchor;
+        $end = $dayAnchor;
         $title = 'Daily Snapshot';
     }
 
@@ -62,6 +79,9 @@ function buildReportRange($period, $anchorDate)
         'anchor' => $anchor->format('Y-m-d'),
         'start' => $start->format('Y-m-d'),
         'end' => $end->format('Y-m-d'),
+        'day_date' => $dayAnchor->format('Y-m-d'),
+        'custom_start' => $customStart->format('Y-m-d'),
+        'custom_end' => $customEnd->format('Y-m-d'),
         'label' => $start->format('F j, Y') . ' to ' . $end->format('F j, Y'),
     ];
 }
@@ -136,6 +156,7 @@ function buildAttendanceReport($rosterRows, $attendanceRows, $scheduledMeetings,
             'attendance_rate' => null,
             'status' => 'Absent',
             'scanned_at' => '',
+            'scan_image_path' => '',
         ];
     }
 
@@ -165,12 +186,16 @@ function buildAttendanceReport($rosterRows, $attendanceRows, $scheduledMeetings,
                 $studentRows[$studentKey]['present_count']++;
                 $studentRows[$studentKey]['status'] = 'Present';
                 $studentRows[$studentKey]['scanned_at'] = $attendanceByDate[$meetingDate][$studentKey]['scanned_at'];
+                $studentRows[$studentKey]['scan_image_path'] = isset($attendanceByDate[$meetingDate][$studentKey]['scan_image_path'])
+                    ? (string)$attendanceByDate[$meetingDate][$studentKey]['scan_image_path']
+                    : '';
 
                 if ($firstScan === '' || strtotime($attendanceByDate[$meetingDate][$studentKey]['scanned_at']) < strtotime($firstScan)) {
                     $firstScan = $attendanceByDate[$meetingDate][$studentKey]['scanned_at'];
                 }
             } elseif ($period === 'day' && count($scheduledDates) > 0) {
                 $studentRows[$studentKey]['status'] = 'Absent';
+                $studentRows[$studentKey]['scan_image_path'] = '';
             }
         }
 
@@ -192,6 +217,7 @@ function buildAttendanceReport($rosterRows, $attendanceRows, $scheduledMeetings,
         foreach ($studentOrder as $studentKey) {
             $studentRows[$studentKey]['status'] = 'No class scheduled';
             $studentRows[$studentKey]['scanned_at'] = '';
+            $studentRows[$studentKey]['scan_image_path'] = '';
         }
     }
 
@@ -263,7 +289,9 @@ if (!$isAdmin && !$isProfessor) {
 $selectedClassId = isset($_GET['class_id']) ? (int)$_GET['class_id'] : 0;
 $selectedPeriod = isset($_GET['report_period']) ? $_GET['report_period'] : 'day';
 $selectedDate = isset($_GET['report_date']) ? $_GET['report_date'] : date('Y-m-d');
-$reportRange = buildReportRange($selectedPeriod, $selectedDate);
+$selectedStartDate = isset($_GET['report_start_date']) ? $_GET['report_start_date'] : date('Y-m-d', strtotime('-6 days'));
+$selectedEndDate = isset($_GET['report_end_date']) ? $_GET['report_end_date'] : date('Y-m-d');
+$reportRange = buildReportRange($selectedPeriod, $selectedDate, $selectedStartDate, $selectedEndDate);
 $classes = $db->getClassList($currentUser);
 $displayName = $db->getUserInfo($currentUser, 'full_name');
 $dashboardLabel = $isAdmin && $isProfessor
@@ -316,21 +344,37 @@ if ($selectedClassId > 0) {
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var periodSelect = document.getElementById('reportPeriod');
-    var dateInput = document.getElementById('reportDate');
-    if (!periodSelect || !dateInput) {
+    var dayDateControl = document.getElementById('reportDateControl');
+    var dayDateInput = document.getElementById('reportDate');
+    var customStartControl = document.getElementById('reportStartControl');
+    var customStartInput = document.getElementById('reportStartDate');
+    var customEndControl = document.getElementById('reportEndControl');
+    var customEndInput = document.getElementById('reportEndDate');
+    if (
+        !periodSelect ||
+        !dayDateControl || !dayDateInput ||
+        !customStartControl || !customStartInput ||
+        !customEndControl || !customEndInput
+    ) {
         return;
     }
 
-    function syncDateState() {
-        var isWeek = periodSelect.value === 'week';
-        dateInput.disabled = isWeek;
-        if (isWeek && dateInput.dataset.currentDate) {
-            dateInput.value = dateInput.dataset.currentDate;
-        }
+    function syncRangeState() {
+        var period = periodSelect.value;
+        var isDay = period === 'day';
+        var isCustom = period === 'custom';
+
+        dayDateControl.style.display = isDay ? '' : 'none';
+        dayDateInput.disabled = !isDay;
+
+        customStartControl.style.display = isCustom ? '' : 'none';
+        customEndControl.style.display = isCustom ? '' : 'none';
+        customStartInput.disabled = !isCustom;
+        customEndInput.disabled = !isCustom;
     }
 
-    periodSelect.addEventListener('change', syncDateState);
-    syncDateState();
+    periodSelect.addEventListener('change', syncRangeState);
+    syncRangeState();
 });
 </script>
 </head>
@@ -375,19 +419,38 @@ document.addEventListener('DOMContentLoaded', function () {
             <label for="reportPeriod">Report Type</label>
             <select id="reportPeriod" name="report_period">
                 <option value="day"<?php echo $reportRange['period'] === 'day' ? ' selected' : ''; ?>>Day</option>
-                <option value="week"<?php echo $reportRange['period'] === 'week' ? ' selected' : ''; ?>>Last 7 days</option>
-                <option value="month"<?php echo $reportRange['period'] === 'month' ? ' selected' : ''; ?>>Month to date</option>
+                <option value="last7"<?php echo $reportRange['period'] === 'last7' ? ' selected' : ''; ?>>Last 7 days</option>
+                <option value="custom"<?php echo $reportRange['period'] === 'custom' ? ' selected' : ''; ?>>Custom</option>
             </select>
         </div>
-        <div class="report-control">
-            <label for="reportDate">Ending Date</label>
+        <div class="report-control" id="reportDateControl">
+            <label for="reportDate">Date</label>
             <input
                 id="reportDate"
                 type="date"
                 name="report_date"
-                value="<?php echo e($reportRange['anchor']); ?>"
-                data-current-date="<?php echo e(date('Y-m-d')); ?>"
-                <?php echo $reportRange['period'] === 'week' ? 'disabled' : ''; ?>
+                value="<?php echo e($reportRange['day_date']); ?>"
+                <?php echo $reportRange['period'] === 'day' ? '' : 'disabled'; ?>
+            >
+        </div>
+        <div class="report-control" id="reportStartControl">
+            <label for="reportStartDate">Start Date</label>
+            <input
+                id="reportStartDate"
+                type="date"
+                name="report_start_date"
+                value="<?php echo e($reportRange['custom_start']); ?>"
+                <?php echo $reportRange['period'] === 'custom' ? '' : 'disabled'; ?>
+            >
+        </div>
+        <div class="report-control" id="reportEndControl">
+            <label for="reportEndDate">End Date</label>
+            <input
+                id="reportEndDate"
+                type="date"
+                name="report_end_date"
+                value="<?php echo e($reportRange['custom_end']); ?>"
+                <?php echo $reportRange['period'] === 'custom' ? '' : 'disabled'; ?>
             >
         </div>
         <div class="report-actions">
@@ -485,6 +548,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <?php if ($reportRange['period'] === 'day'): ?>
                                 <th>Status</th>
                                 <th>Scan Time</th>
+                                <th>Scan Photo</th>
                             <?php else: ?>
                                 <th>Present</th>
                                 <th>Absent</th>
@@ -494,7 +558,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </thead>
                     <tbody>
                         <?php if (!$reportData['student_rows']): ?>
-                            <tr><td colspan="<?php echo $reportRange['period'] === 'day' ? '4' : '5'; ?>" style="text-align:center;opacity:.8">No enrolled students were found for this class.</td></tr>
+                            <tr><td colspan="<?php echo $reportRange['period'] === 'day' ? '5' : '5'; ?>" style="text-align:center;opacity:.8">No enrolled students were found for this class.</td></tr>
                         <?php else: ?>
                             <?php foreach ($reportData['student_rows'] as $student): ?>
                                 <tr>
@@ -504,6 +568,15 @@ document.addEventListener('DOMContentLoaded', function () {
                                         <td data-label="Status"><?php echo e($student['status']); ?></td>
                                         <td data-label="Scan Time">
                                             <?php echo $student['scanned_at'] !== '' ? e(date('Y-m-d g:i:s A', strtotime($student['scanned_at']))) : '-'; ?>
+                                        </td>
+                                        <td data-label="Scan Photo">
+                                            <?php if (!empty($student['scan_image_path'])): ?>
+                                                <a href="<?php echo e($student['scan_image_path']); ?>" target="_blank" rel="noopener">
+                                                    <img class="report-scan-image" src="<?php echo e($student['scan_image_path']); ?>" alt="Student scan photo">
+                                                </a>
+                                            <?php else: ?>
+                                                -
+                                            <?php endif; ?>
                                         </td>
                                     <?php else: ?>
                                         <td data-label="Present"><?php echo e($student['present_count']); ?></td>
@@ -531,6 +604,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 <th>Date</th>
                                 <th>Student / Label</th>
                                 <th>Scan Time</th>
+                                <th>Scan Photo</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -539,6 +613,15 @@ document.addEventListener('DOMContentLoaded', function () {
                                     <td data-label="Date"><?php echo e($scan['meeting_date']); ?></td>
                                     <td data-label="Student / Label"><?php echo e($scan['full_name']); ?></td>
                                     <td data-label="Scan Time"><?php echo e(date('Y-m-d g:i:s A', strtotime($scan['scanned_at']))); ?></td>
+                                    <td data-label="Scan Photo">
+                                        <?php if (!empty($scan['scan_image_path'])): ?>
+                                            <a href="<?php echo e($scan['scan_image_path']); ?>" target="_blank" rel="noopener">
+                                                <img class="report-scan-image" src="<?php echo e($scan['scan_image_path']); ?>" alt="Student scan photo">
+                                            </a>
+                                        <?php else: ?>
+                                            -
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

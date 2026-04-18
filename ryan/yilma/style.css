@@ -313,7 +313,7 @@ body.report-page #dashboard.report-dashboard {
 
 .report-controls {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 16px;
     align-items: end;
     margin-bottom: 24px;
@@ -422,6 +422,16 @@ body.report-page #dashboard.report-dashboard {
 
 .report-section {
     margin-top: 26px;
+}
+
+.report-scan-image {
+    display: block;
+    width: 96px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #0f172a;
 }
 
 .section-heading {
@@ -827,6 +837,78 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     color: #162033;
 }
 
+.onboarding-intro {
+    margin-bottom: 14px;
+}
+
+.face-flow-toggle {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.flow-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #d1deef;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #f8fbff;
+    color: #334155;
+    font-weight: 600;
+}
+
+.flow-pill input[type="radio"] {
+    width: auto;
+    margin: 0;
+}
+
+.onboarding-steps {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.onboarding-step {
+    border: 1px solid #dbe7f4;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f2f7fd 100%);
+    padding: 12px;
+}
+
+.onboarding-step h4 {
+    margin-bottom: 8px;
+    color: #1e3a8a;
+    font-size: 0.96rem;
+}
+
+.step-help {
+    margin-top: -6px;
+    margin-bottom: 0;
+    font-size: 0.88rem;
+    color: #64748b;
+}
+
+.consent-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    color: #334155;
+    font-weight: 500;
+}
+
+.consent-check input[type="checkbox"] {
+    width: auto;
+    margin: 2px 0 0;
+}
+
+.admin-card .video-box {
+    width: 100%;
+    max-width: none;
+}
+
 .stack-form label,
 .admin-card > label,
 .label-row {
@@ -858,14 +940,28 @@ body.report-page .dashboard-buttons .btn.logout:hover {
 }
 
 .checkbox-grid label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
     color: #334155;
     font-weight: 500;
     font-size: 0.94rem;
+    line-height: 1.35;
+    min-width: 0;
 }
 
 .checkbox-grid input[type="checkbox"] {
     width: auto;
-    margin-right: 6px;
+    margin: 2px 0 0;
+    flex: 0 0 auto;
+}
+
+.checkbox-grid .security-desk-role {
+    grid-column: 1 / -1;
+}
+
+.checkbox-grid .role-label-text {
+    display: inline-block;
 }
 
 .table-wrap {
@@ -1109,6 +1205,16 @@ body.report-page .dashboard-buttons .btn.logout:hover {
     color: #1d4ed8;
     font-size: 0.8rem;
     font-weight: 700;
+}
+
+.log-scan-image {
+    display: block;
+    width: 96px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #0f172a;
 }
 
 .subtle {

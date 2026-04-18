@@ -52,10 +52,16 @@ if ($return_code === 0) {
     exit;
 }
 
+if ($return_code === 4) {
+    $db->logAdminEvent($actor, 'face_delete_retrained', $user_id_raw, 'No matching face folder found; retraining completed to clear stale labels');
+    echo "No matching face folder found, but model retraining completed.\n" . $body . "\n";
+    exit;
+}
+
 if ($return_code === 1) {
     $db->logAdminEvent($actor, 'face_delete_failed', $user_id_raw, 'No exact face directory match');
     http_response_code(404);
-    echo "No exact match for user directory. Case-sensitive.\n" . $body . "\n";
+    echo "No matching face directory was found.\n" . $body . "\n";
     exit;
 }
 

@@ -7,6 +7,8 @@ app = Flask(__name__)
 @app.after_request
 def add_headers(resp):
     resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     resp.headers['Cache-Control'] = 'no-store'
     return resp
 
@@ -63,6 +65,40 @@ def label():
     resp = make_response(txt if txt else "Unknown")
     resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
     return resp
+
+
+@app.route('/scan_result')
+def scan_result():
+    try:
+        from recognize import get_latest_scan_result
+        result = get_latest_scan_result()
+    except Exception:
+        result = {
+            "status": "idle",
+            "label": "Unknown",
+            "image_url": "",
+            "token": "",
+            "message": "Scan status unavailable.",
+            "timestamp": 0,
+        }
+    return jsonify(result)
+
+
+@app.route('/opt_out_face', methods=['POST', 'OPTIONS'])
+def opt_out_face():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    data = request.get_json(silent=True) or request.form
+    label_value = data.get('label', '')
+    token = data.get('token', '')
+    try:
+        from recognize import opt_out_latest_face
+        ok, message = opt_out_latest_face(label_value, token)
+    except Exception as exc:
+        ok = False
+        message = f"Opt-out failed: {exc}"
+    status = 200 if ok else 400
+    return jsonify({"ok": bool(ok), "message": message}), status
 
 
 @app.route('/door_state')

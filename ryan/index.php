@@ -130,7 +130,15 @@ setInterval(updateClassInfo, 1000);
       <button id="closeFaceModal" class="modal-close" type="button" aria-label="Close">&times;</button>
     </header>
     <div class="modal-content">
-      <img id="faceStream" src="" alt="Face recognition stream">
+      <img id="faceStream" src="" alt="">
+      <div id="faceResult" class="face-result" aria-live="polite" hidden>
+        <p id="faceResultMessage">Scanning...</p>
+        <img id="faceSnapshot" src="" alt="Face scan snapshot" hidden>
+        <div id="faceActions" class="face-actions" hidden>
+          <button id="enterRoomBtn" class="face-action primary" type="button">Enter Room</button>
+          <button id="optOutBtn" class="face-action danger" type="button">Opt Out</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -139,15 +147,25 @@ setInterval(updateClassInfo, 1000);
 const scanBtn = document.getElementById('scanFace');
 const roomNumberEl = document.getElementById('roomNumber');
 const ROOM_ID = roomNumberEl ? roomNumberEl.textContent.trim() : '115';
+const RECOGNITION_BASE = "http://debianRy.local:5001";
 const faceModal = document.getElementById('faceModal');
 const closeFaceModal = document.getElementById('closeFaceModal');
 const faceStream = document.getElementById('faceStream');
+const faceResult = document.getElementById('faceResult');
+const faceResultMessage = document.getElementById('faceResultMessage');
+const faceSnapshot = document.getElementById('faceSnapshot');
+const faceActions = document.getElementById('faceActions');
+const enterRoomBtn = document.getElementById('enterRoomBtn');
+const optOutBtn = document.getElementById('optOutBtn');
 
 let isScanning = false;
 let autoClose = null;
 let preparePromise = null;
 let labelPollTimer = null;
 let labelPollInFlight = false;
+let matchedLabel = "";
+let optOutToken = "";
+let scanStartedAt = 0;
 
 async function stopCaptureFeed() {
   try {
@@ -167,11 +185,11 @@ function queueAutoClose() {
   if (autoClose) {
     clearTimeout(autoClose);
   }
-  autoClose = setTimeout(() => stopScan(), 8000);
+  autoClose = setTimeout(() => stopScan(false), 10000);
 }
 
 async function prepareScan(forceReload = false) {
-  const url = "http://debianRy.local:5001/prepare_scan?reload=" + (forceReload ? "1" : "0") + "&door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
+  const url = RECOGNITION_BASE + "/prepare_scan?reload=" + (forceReload ? "1" : "0") + "&door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
   if (!forceReload && preparePromise) {
     return preparePromise;
   }
@@ -188,20 +206,125 @@ async function prepareScan(forceReload = false) {
   return request;
 }
 
-async function stopScan(recordAttendance = true) {
+function clearScanResult() {
+  matchedLabel = "";
+  optOutToken = "";
+  scanStartedAt = 0;
+  if (faceResult) faceResult.hidden = true;
+  if (faceResultMessage) faceResultMessage.textContent = "Scanning...";
+  if (faceSnapshot) {
+    faceSnapshot.hidden = true;
+    faceSnapshot.src = "";
+  }
+  if (faceActions) faceActions.hidden = true;
+  if (enterRoomBtn) enterRoomBtn.hidden = true;
+  if (optOutBtn) optOutBtn.hidden = true;
+  if (enterRoomBtn) enterRoomBtn.disabled = false;
+  if (optOutBtn) optOutBtn.disabled = false;
+}
+
+function isActionableFaceLabel(label) {
+  const parts = String(label || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length === 1 && parts[0].toLowerCase() !== "unknown";
+}
+
+async function checkCanEnter(label) {
+  if (!isActionableFaceLabel(label)) {
+    return {can_enter: false, message: "No face match found."};
+  }
+  try {
+    const res = await fetch(
+      "labels.php?action=can_enter&room=" + encodeURIComponent(ROOM_ID) + "&label=" + encodeURIComponent(label),
+      { cache: "no-store" }
+    );
+    const data = await res.json();
+    return {
+      can_enter: Boolean(data.can_enter),
+      message: data.message || ""
+    };
+  } catch (e) {
+    return {can_enter: false, message: "Could not verify this student for the current room."};
+  }
+}
+
+async function showScanResult(result) {
+  const status = result && result.status ? result.status : "idle";
+  const resultLabel = result && result.label ? result.label : "";
+  const isMatchedKnownFace = status === "matched" && isActionableFaceLabel(resultLabel);
+  matchedLabel = "";
+  optOutToken = "";
+  if (faceActions) faceActions.hidden = true;
+  if (enterRoomBtn) enterRoomBtn.hidden = true;
+  if (optOutBtn) optOutBtn.hidden = true;
+  let canEnter = false;
+  let roomMessage = "";
+  if (isMatchedKnownFace) {
+    const roomCheck = await checkCanEnter(resultLabel);
+    canEnter = roomCheck.can_enter;
+    roomMessage = roomCheck.message;
+  }
+  if (faceResult) faceResult.hidden = false;
+  if (faceResultMessage) {
+    if (isMatchedKnownFace && canEnter) {
+      faceResultMessage.textContent = "Face matched: " + resultLabel;
+    } else if (isMatchedKnownFace) {
+      faceResultMessage.textContent = roomMessage || "You are not on the roster for this room right now.";
+    } else {
+      faceResultMessage.textContent = "No face match found.";
+    }
+  }
+  if (faceSnapshot) {
+    if (result && result.image_url) {
+      faceSnapshot.src = result.image_url + "?t=" + Date.now();
+      faceSnapshot.hidden = false;
+    } else {
+      faceSnapshot.hidden = true;
+      faceSnapshot.src = "";
+    }
+  }
+  if (isMatchedKnownFace && canEnter) {
+    matchedLabel = resultLabel;
+    optOutToken = result.token || "";
+    if (faceActions) faceActions.hidden = false;
+    if (enterRoomBtn) enterRoomBtn.hidden = false;
+    if (optOutBtn) optOutBtn.hidden = false;
+  }
+  scanBtn.textContent = status === "no_match"
+    ? "No Match"
+    : (isMatchedKnownFace && canEnter ? "Scan Complete" : "No Entry");
+}
+
+async function stopVideoFeed() {
   if (!isScanning) {
     return;
   }
   isScanning = false;
   clearLabelPoll();
-  try { await fetch("http://debianRy.local:5001/stop_feed"); } catch(e) {}
-  if (recordAttendance) {
-    try { await fetch("labels.php?room=" + encodeURIComponent(ROOM_ID), { cache: "no-store" }); } catch(e) {}
-  }
+  try { await fetch(RECOGNITION_BASE + "/stop_feed?t=" + Date.now(), { cache: "no-store" }); } catch(e) {}
   if (autoClose) { clearTimeout(autoClose); autoClose = null; }
-  if (faceStream) faceStream.src = "about:blank";
+  if (faceStream) {
+    faceStream.src = "";
+    faceStream.hidden = true;
+  }
+}
+
+async function stopScan(recordAttendance = false) {
+  await stopVideoFeed();
+  scanStartedAt = 0;
+  if (recordAttendance && matchedLabel) {
+    try {
+      await fetch(
+        "labels.php?room=" + encodeURIComponent(ROOM_ID) + "&label=" + encodeURIComponent(matchedLabel),
+        { cache: "no-store" }
+      );
+    } catch(e) {}
+  }
   if (faceModal) faceModal.classList.remove('show');
   scanBtn.textContent = "Scan Face";
+  clearScanResult();
 }
 
 async function pollForLabel() {
@@ -210,12 +333,21 @@ async function pollForLabel() {
   }
   labelPollInFlight = true;
   try {
-    const res = await fetch("http://debianRy.local:5001/label?t=" + Date.now(), { cache: "no-store" });
-    const label = (await res.text()).trim();
-    if (!isScanning || !label || label === "Unknown") {
+    const res = await fetch(RECOGNITION_BASE + "/scan_result?t=" + Date.now(), { cache: "no-store" });
+    const result = await res.json();
+    const resultTimestamp = Number(result && result.timestamp ? result.timestamp : 0);
+    if (
+      scanStartedAt > 0 &&
+      resultTimestamp > 0 &&
+      resultTimestamp < (scanStartedAt - 0.2)
+    ) {
       return;
     }
-    await stopScan(true);
+    if (!isScanning || !result || (result.status !== "matched" && result.status !== "no_match")) {
+      return;
+    }
+    await stopVideoFeed();
+    await showScanResult(result);
   } catch (e) {
   } finally {
     labelPollInFlight = false;
@@ -242,41 +374,80 @@ if (faceStream) {
   });
 }
 
-window.setTimeout(() => {
-  prepareScan();
-}, 250);
-
 scanBtn.addEventListener('click', async () => {
   if (scanBtn.disabled) return;
   if (!isScanning) {
+    clearScanResult();
+    scanStartedAt = Date.now() / 1000;
     scanBtn.textContent = "Starting Camera...";
     if (faceModal) {
       faceModal.classList.add('show');
     }
     await prepareScan(true);
+    isScanning = true;
     if (faceStream) {
-      faceStream.src = "http://debianRy.local:5001/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
+      faceStream.hidden = false;
+      faceStream.src = RECOGNITION_BASE + "/video_feed?door_id=" + encodeURIComponent(ROOM_ID) + "&t=" + Date.now();
     }
     scanBtn.textContent = "Waiting for Camera...";
-    isScanning = true;
   } else {
-    await stopScan();
+    await stopScan(false);
   }
 });
 
+if (enterRoomBtn) {
+  enterRoomBtn.addEventListener('click', async () => {
+    if (!isActionableFaceLabel(matchedLabel)) return;
+    enterRoomBtn.disabled = true;
+    if (optOutBtn) optOutBtn.disabled = true;
+    if (faceResultMessage) faceResultMessage.textContent = "Entering room...";
+    await stopScan(true);
+  });
+}
+
+if (optOutBtn) {
+  optOutBtn.addEventListener('click', async () => {
+    if (!isActionableFaceLabel(matchedLabel) || !optOutToken) return;
+    const ok = confirm("Are you sure you want to opt out? This will delete your face data and regenerate the face model.");
+    if (!ok) return;
+    optOutBtn.disabled = true;
+    if (enterRoomBtn) enterRoomBtn.disabled = true;
+    if (faceResultMessage) faceResultMessage.textContent = "Deleting face data and regenerating the model...";
+    try {
+      const res = await fetch(RECOGNITION_BASE + "/opt_out_face", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({label: matchedLabel, token: optOutToken})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || "Opt-out failed.");
+      }
+      if (faceResultMessage) faceResultMessage.textContent = data.message || "Face data deleted and model regenerated.";
+      if (faceActions) faceActions.hidden = true;
+      scanBtn.textContent = "Scan Face";
+      window.setTimeout(() => stopScan(false), 1600);
+    } catch (err) {
+      if (faceResultMessage) faceResultMessage.textContent = err && err.message ? err.message : "Opt-out failed.";
+      if (enterRoomBtn) enterRoomBtn.disabled = false;
+      optOutBtn.disabled = false;
+    }
+  });
+}
+
 if (closeFaceModal) {
-  closeFaceModal.addEventListener('click', () => stopScan());
+  closeFaceModal.addEventListener('click', () => stopScan(false));
 }
 if (faceModal) {
   faceModal.addEventListener('click', (e) => {
     if (e.target === faceModal) {
-      stopScan();
+      stopScan(false);
     }
   });
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && isScanning) {
-    stopScan();
+  if (e.key === 'Escape' && faceModal && faceModal.classList.contains('show')) {
+    stopScan(false);
   }
 });
 </script>

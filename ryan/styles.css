@@ -251,11 +251,71 @@ h2 {
   background: #020712;
 }
 
+.modal [hidden] {
+  display: none !important;
+}
+
 .modal-content img {
   display: block;
   width: 100%;
   max-height: 76vh;
   object-fit: contain;
+}
+
+.face-result {
+  padding: 16px;
+  background: #071322;
+  border-top: 1px solid rgba(121, 176, 207, 0.26);
+  color: #e8f2ff;
+  text-align: center;
+}
+
+.face-result p {
+  margin: 0 0 12px;
+  font-size: clamp(1rem, 2.1vw, 1.28rem);
+  font-weight: 700;
+}
+
+.face-result #faceSnapshot {
+  width: min(360px, 100%);
+  max-height: 220px;
+  margin: 0 auto 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(121, 176, 207, 0.34);
+  object-fit: contain;
+  background: #020712;
+}
+
+.face-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.face-action {
+  width: auto;
+  min-width: 145px;
+  border: 1px solid rgba(129, 181, 208, 0.5);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.face-action.primary {
+  background: #287f87;
+}
+
+.face-action.danger {
+  background: #a13b3b;
+}
+
+.face-action:disabled {
+  opacity: 0.62;
+  cursor: wait;
 }
 
 @media (max-width: 1024px) {

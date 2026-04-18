@@ -6,6 +6,10 @@ $message = '';
 $messageType = 'info';
 $displayName = 'Administrator (Mock)';
 $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'users';
+$allTabs = ['users', 'faces', 'doors', 'logs'];
+$allowedTabs = $allTabs;
+$isAdminUser = false;
+$isProfessorUser = false;
 
 function e($v)
 {
@@ -44,17 +48,27 @@ function logSortIndicator($column, $currentSort, $currentDir)
     return strtoupper((string)$currentDir) === 'ASC' ? '^' : 'v';
 }
 
-$allowedTabs = ['users', 'faces', 'doors', 'logs'];
-if (!in_array($activeTab, $allowedTabs, true)) {
+function isSecurityDeskPresetFromValues($isAdmin, $isProf, $canManageUsers, $canManageFaces, $canManageDoors, $canViewLogs)
+{
+    return (int)$isAdmin === 0
+        && (int)$isProf === 0
+        && (int)$canManageUsers === 0
+        && (int)$canManageFaces === 0
+        && (int)$canManageDoors === 1
+        && (int)$canViewLogs === 1;
+}
+
+$allowedTabs = $allTabs;
+if (!in_array($activeTab, $allTabs, true)) {
     $activeTab = 'users';
 }
 
 $db = null;
 $currentUser = isset($_SESSION['valid_user']) ? $_SESSION['valid_user'] : '';
-$canManageUsers = true;
-$canManageFaces = true;
-$canManageDoors = true;
-$canViewLogs = true;
+$canManageUsers = false;
+$canManageFaces = false;
+$canManageDoors = false;
+$canViewLogs = false;
 $logs = [];
 $logActionOptions = [];
 $logTotal = 0;
@@ -95,17 +109,38 @@ if (!$DEV_MODE) {
         exit();
     }
 
-    if (!$db->isAdmin($_SESSION['valid_user'])) {
-        header('Location: ./mainMenu.php');
+    $isAdminUser = $db->isAdmin($_SESSION['valid_user']);
+    $isProfessorUser = $db->isProf($_SESSION['valid_user']);
+    $permissions = $db->getUserPermissions($_SESSION['valid_user']);
+
+    $canManageUsers = $isAdminUser || ((int)$permissions['can_manage_users'] === 1);
+    $canManageFaces = $isAdminUser || ((int)$permissions['can_manage_faces'] === 1);
+    $canManageDoors = $isAdminUser || ((int)$permissions['can_manage_doors'] === 1);
+    $canViewLogs = $isAdminUser || ((int)$permissions['can_view_logs'] === 1);
+
+    $hasAdminAccess = $canManageUsers || $canManageFaces || $canManageDoors || $canViewLogs;
+    if (!$hasAdminAccess) {
+        if ($isProfessorUser) {
+            header('Location: ./mainMenu.php');
+        } else {
+            header('Location: ./index.php');
+        }
         exit();
     }
 
-    $displayName = $db->getUserInfo($_SESSION['valid_user'], 'full_name');
+    $allowedTabs = [];
+    if ($canManageUsers) { $allowedTabs[] = 'users'; }
+    if ($canManageFaces) { $allowedTabs[] = 'faces'; }
+    if ($canManageDoors) { $allowedTabs[] = 'doors'; }
+    if ($canViewLogs) { $allowedTabs[] = 'logs'; }
+    if (empty($allowedTabs)) {
+        $allowedTabs = ['logs'];
+    }
+    if (!in_array($activeTab, $allowedTabs, true)) {
+        $activeTab = $allowedTabs[0];
+    }
 
-    $canManageUsers = $db->isAdmin($_SESSION['valid_user']);
-    $canManageFaces = $db->isAdmin($_SESSION['valid_user']);
-    $canManageDoors = $db->isAdmin($_SESSION['valid_user']);
-    $canViewLogs = $db->isAdmin($_SESSION['valid_user']);
+    $displayName = $db->getUserInfo($_SESSION['valid_user'], 'full_name');
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = isset($_POST['action']) ? $_POST['action'] : '';
@@ -123,6 +158,7 @@ if (!$DEV_MODE) {
                 $is_prof = isset($_POST['is_prof']) ? 1 : 0;
                 $is_admin = isset($_POST['is_admin']) ? 1 : 0;
                 $is_student = isset($_POST['is_student']) ? 1 : 0;
+                $is_security_desk = isset($_POST['is_security_desk']) ? 1 : 0;
 
                 if ($username === '' || !preg_match('/^[A-Za-z0-9_]{3,40}$/', $username)) {
                     $message = 'Username must be 3-40 chars and only letters, numbers, underscore.';
@@ -130,8 +166,14 @@ if (!$DEV_MODE) {
                 } elseif ($full_name === '') {
                     $message = 'Full name is required.';
                     $messageType = 'error';
-                } elseif (($is_prof + $is_admin + $is_student) === 0) {
-                    $message = 'Select at least one role.';
+                } elseif (($is_admin === 1 || $is_prof === 1 || $is_security_desk === 1) && $password === '') {
+                    $message = 'Password is required for Admin, Professor, or Security Desk users.';
+                    $messageType = 'error';
+                } elseif ($is_security_desk && ($is_admin === 1 || $is_prof === 1)) {
+                    $message = 'Security desk users cannot also be Admin or Professor.';
+                    $messageType = 'error';
+                } elseif (($is_prof + $is_admin + $is_student) === 0 && !$is_security_desk) {
+                    $message = 'Select at least one role or choose Security Desk.';
                     $messageType = 'error';
                 } else {
                     $passwordHash = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : '';
@@ -141,13 +183,18 @@ if (!$DEV_MODE) {
                         $message = 'Username already exists.';
                         $messageType = 'error';
                     } elseif ($result === true) {
+                        if ($is_security_desk) {
+                            $db->updateUserRolesAndPermissions($username, $is_prof, $is_admin, $is_student, 0, 0, 1, 1);
+                        }
                         $db->logAdminEvent(
                             $_SESSION['valid_user'],
                             'user_created',
                             $username,
-                            'roles(admin=' . $is_admin . ',prof=' . $is_prof . ',student=' . $is_student . ')'
+                            'roles(admin=' . $is_admin . ',prof=' . $is_prof . ',student=' . $is_student . ',security_desk=' . $is_security_desk . ')'
                         );
-                        $message = 'User created successfully.';
+                        $message = $is_security_desk
+                            ? 'Security desk user created successfully.'
+                            : 'User created successfully.';
                         $messageType = 'success';
                     } else {
                         $message = 'Could not create user.';
@@ -166,6 +213,8 @@ if (!$DEV_MODE) {
                 $is_prof = isset($_POST['is_prof']) ? 1 : 0;
                 $is_admin = isset($_POST['is_admin']) ? 1 : 0;
                 $is_student = isset($_POST['is_student']) ? 1 : 0;
+                $is_security_desk = isset($_POST['is_security_desk']) ? 1 : 0;
+                $was_security_desk = isset($_POST['was_security_desk']) ? (int)$_POST['was_security_desk'] : 0;
 
                 if ($targetUser === '') {
                     $message = 'Invalid target user.';
@@ -173,25 +222,66 @@ if (!$DEV_MODE) {
                 } elseif ($full_name === '' || strlen($full_name) > 100) {
                     $message = 'Full name is required and must be 100 characters or less.';
                     $messageType = 'error';
-                } elseif (($is_prof + $is_admin + $is_student) === 0) {
-                    $message = 'A user must keep at least one role.';
+                } elseif ($is_security_desk && ($is_admin === 1 || $is_prof === 1)) {
+                    $message = 'Security desk users cannot also be Admin or Professor.';
+                    $messageType = 'error';
+                } elseif (($is_prof + $is_admin + $is_student) === 0 && !$is_security_desk) {
+                    $message = 'A user must keep at least one role or be assigned Security Desk.';
                     $messageType = 'error';
                 } elseif ($targetUser === $_SESSION['valid_user'] && $is_admin === 0) {
                     $message = 'You cannot remove your own admin role.';
                     $messageType = 'error';
                 } else {
-                    $db->updateUserRoles(
-                        $targetUser,
-                        $is_prof,
-                        $is_admin,
-                        $is_student,
-                        $full_name
-                    );
+                    if ($is_security_desk) {
+                        $db->updateUserRoles(
+                            $targetUser,
+                            $is_prof,
+                            $is_admin,
+                            $is_student,
+                            $full_name
+                        );
+                        $db->updateUserRolesAndPermissions(
+                            $targetUser,
+                            $is_prof,
+                            $is_admin,
+                            $is_student,
+                            0,
+                            0,
+                            1,
+                            1
+                        );
+                    } elseif ($was_security_desk === 1) {
+                        $db->updateUserRoles(
+                            $targetUser,
+                            $is_prof,
+                            $is_admin,
+                            $is_student,
+                            $full_name
+                        );
+                        $db->updateUserRolesAndPermissions(
+                            $targetUser,
+                            $is_prof,
+                            $is_admin,
+                            $is_student,
+                            0,
+                            0,
+                            0,
+                            0
+                        );
+                    } else {
+                        $db->updateUserRoles(
+                            $targetUser,
+                            $is_prof,
+                            $is_admin,
+                            $is_student,
+                            $full_name
+                        );
+                    }
                     $db->logAdminEvent(
                         $_SESSION['valid_user'],
                         'user_updated',
                         $targetUser,
-                        'roles/full_name updated'
+                        'roles/full_name updated; security_desk=' . $is_security_desk
                     );
                     $message = 'User profile updated.';
                     $messageType = 'success';
@@ -246,9 +336,9 @@ if (!$DEV_MODE) {
                     $message = 'Invalid door selected.';
                     $messageType = 'error';
                 } else {
-                    $db->setDoorState($doorId, 1, 'locked_until_authorized', 'Remotely locked until professor/admin face scan', $_SESSION['valid_user'], $roomNumber);
-                    $db->logAdminEvent($_SESSION['valid_user'], 'door_locked_remote', null, 'Door ' . $doorId . ' locked until professor/admin face scan');
-                    $message = 'Door ' . $doorId . ' locked. It will stay locked until an admin/professor face scan is recognized at that door.';
+                    $db->setDoorState($doorId, 1, 'locked_until_authorized', 'Remotely locked until authorized face scan', $_SESSION['valid_user'], $roomNumber);
+                    $db->logAdminEvent($_SESSION['valid_user'], 'door_locked_remote', null, 'Door ' . $doorId . ' locked until authorized face scan (admin/professor/security desk)');
+                    $message = 'Door ' . $doorId . ' locked. It will stay locked until an authorized face scan (admin/professor/security desk) is recognized at that door.';
                     $messageType = 'success';
                 }
             }
@@ -318,6 +408,13 @@ if (!$DEV_MODE) {
 } else {
     $users = [];
     $doorStates = [];
+    $allowedTabs = $allTabs;
+    $canManageUsers = true;
+    $canManageFaces = true;
+    $canManageDoors = true;
+    $canViewLogs = true;
+    $isAdminUser = true;
+    $isProfessorUser = true;
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'DEV_MODE is ON: actions disabled.';
     }
@@ -343,7 +440,9 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
 
     <div class="dashboard-buttons">
         <?php if (!$DEV_MODE): ?>
-            <a href="mainMenu.php" class="btn">Professor View</a>
+            <?php if ($isAdminUser || $isProfessorUser): ?>
+                <a href="mainMenu.php" class="btn">Professor View</a>
+            <?php endif; ?>
             <a href="logout.php" class="btn logout">Logout</a>
         <?php else: ?>
             <a href="#" class="btn logout" onclick="return false;" aria-disabled="true" style="opacity:.6;pointer-events:none;">Logout (Disabled)</a>
@@ -361,12 +460,21 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
         <?php endif; ?>
 
         <div class="admin-tabs" role="tablist" aria-label="Admin Tabs">
-            <button type="button" class="admin-tab<?php echo $activeTab === 'users' ? ' active' : ''; ?>" data-tab="users">Users</button>
-            <button type="button" class="admin-tab<?php echo $activeTab === 'faces' ? ' active' : ''; ?>" data-tab="faces">Faces</button>
-            <button type="button" class="admin-tab<?php echo $activeTab === 'doors' ? ' active' : ''; ?>" data-tab="doors">Door Control</button>
-            <button type="button" class="admin-tab<?php echo $activeTab === 'logs' ? ' active' : ''; ?>" data-tab="logs">Activity Logs</button>
+            <?php if (in_array('users', $allowedTabs, true)): ?>
+                <button type="button" class="admin-tab<?php echo $activeTab === 'users' ? ' active' : ''; ?>" data-tab="users">Users</button>
+            <?php endif; ?>
+            <?php if (in_array('faces', $allowedTabs, true)): ?>
+                <button type="button" class="admin-tab<?php echo $activeTab === 'faces' ? ' active' : ''; ?>" data-tab="faces">Faces</button>
+            <?php endif; ?>
+            <?php if (in_array('doors', $allowedTabs, true)): ?>
+                <button type="button" class="admin-tab<?php echo $activeTab === 'doors' ? ' active' : ''; ?>" data-tab="doors">Door Control</button>
+            <?php endif; ?>
+            <?php if (in_array('logs', $allowedTabs, true)): ?>
+                <button type="button" class="admin-tab<?php echo $activeTab === 'logs' ? ' active' : ''; ?>" data-tab="logs">Activity Logs</button>
+            <?php endif; ?>
         </div>
 
+        <?php if (in_array('users', $allowedTabs, true)): ?>
         <section class="tab-panel<?php echo $activeTab === 'users' ? ' active' : ''; ?>" id="tab-users">
             <div class="admin-grid">
                 <article class="admin-card">
@@ -381,14 +489,16 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                         <label>Full Name</label>
                         <input type="text" name="full_name" required <?php echo $DEV_MODE ? 'disabled' : ''; ?>>
 
-                        <label>Password (optional)</label>
-                        <input type="password" name="password" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>
+                        <label>Password</label>
+                        <input type="password" name="password" autocomplete="new-password" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>
+                        <p class="step-help">Required for Admin, Professor, or Security Desk users.</p>
 
                         <div class="label-row">Roles</div>
                         <div class="checkbox-grid">
                             <label><input type="checkbox" name="is_admin" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Admin</label>
                             <label><input type="checkbox" name="is_prof" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Professor</label>
                             <label><input type="checkbox" name="is_student" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> Student</label>
+                            <label class="security-desk-role"><input type="checkbox" name="is_security_desk" <?php echo $DEV_MODE ? 'disabled' : ''; ?>> <span class="role-label-text">Security Desk (Doors + Logs)</span></label>
                         </div>
 
                         <button type="submit" class="create-btn" <?php echo $DEV_MODE ? 'disabled' : ''; ?>>Create User</button>
@@ -415,6 +525,16 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                                 <?php else: ?>
                                     <?php foreach ($users as $u): ?>
                                         <?php $updateFormId = 'update_user_' . preg_replace('/[^A-Za-z0-9_]/', '_', (string)$u['username']); ?>
+                                        <?php
+                                            $isSecurityDeskPreset = isSecurityDeskPresetFromValues(
+                                                (int)$u['is_admin'],
+                                                (int)$u['is_prof'],
+                                                (int)$u['can_manage_users'],
+                                                (int)$u['can_manage_faces'],
+                                                (int)$u['can_manage_doors'],
+                                                (int)$u['can_view_logs']
+                                            );
+                                        ?>
                                         <tr>
                                             <td>
                                                 <strong><?php echo e($u['username']); ?></strong>
@@ -444,6 +564,10 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                                                         <input type="checkbox" name="is_student" form="<?php echo e($updateFormId); ?>" <?php echo ((int)$u['is_student'] === 1 ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>>
                                                         Student
                                                     </label>
+                                                    <label>
+                                                        <input type="checkbox" name="is_security_desk" form="<?php echo e($updateFormId); ?>" <?php echo ($isSecurityDeskPreset ? 'checked ' : '') . ($canManageUsers && !$DEV_MODE ? '' : 'disabled'); ?>>
+                                                        Security Desk
+                                                    </label>
                                                 </div>
                                             </td>
                                             <td class="actions-cell">
@@ -451,6 +575,7 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                                                     <form method="POST" class="inline-form" id="<?php echo e($updateFormId); ?>">
                                                         <input type="hidden" name="action" value="update_user">
                                                         <input type="hidden" name="target_username" value="<?php echo e($u['username']); ?>">
+                                                        <input type="hidden" name="was_security_desk" value="<?php echo $isSecurityDeskPreset ? '1' : '0'; ?>">
                                                     <button type="submit" class="mini-btn" <?php echo $canManageUsers && !$DEV_MODE ? '' : 'disabled'; ?>>Save</button>
                                                     </form>
                                                     <form method="POST" class="inline-form" onsubmit="return confirm('Delete user <?php echo e($u['username']); ?>?');">
@@ -469,17 +594,65 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 </article>
             </div>
         </section>
+        <?php endif; ?>
 
+        <?php if (in_array('faces', $allowedTabs, true)): ?>
         <section class="tab-panel<?php echo $activeTab === 'faces' ? ' active' : ''; ?>" id="tab-faces">
             <div class="admin-grid">
                 <article class="admin-card">
-                    <h3>Face Capture</h3>
+                    <h3>Face Enrollment Onboarding</h3>
                     <?php if ($canManageFaces || $DEV_MODE): ?>
-                        <label for="personIdInput">Person ID</label>
-                        <input type="text" id="personIdInput" name="person_id" placeholder="Enter ID or username">
-                        <label for="personFullNameInput">Full Name (optional)</label>
-                        <input type="text" id="personFullNameInput" name="person_full_name" maxlength="100" placeholder="Enter full name to save/update user profile">
-                        <button class="video-btn" id="btnRight" type="button">Start Capture</button>
+                        <p class="muted onboarding-intro">
+                            Choose whether you are creating a brand new account with face data or appending face data to an existing account.
+                        </p>
+
+                        <div class="face-flow-toggle" role="radiogroup" aria-label="Enrollment flow">
+                            <label class="flow-pill">
+                                <input type="radio" name="faceEnrollFlow" id="flowCreateUser" value="create" checked>
+                                Create new user + face data
+                            </label>
+                            <label class="flow-pill">
+                                <input type="radio" name="faceEnrollFlow" id="flowExistingUser" value="existing">
+                                Existing user + append face data
+                            </label>
+                        </div>
+
+                        <div class="onboarding-steps">
+                            <section class="onboarding-step">
+                                <h4>1. Identity</h4>
+                                <label for="personIdInput">Username / Person ID</label>
+                                <input type="text" id="personIdInput" name="person_id" placeholder="3-40 chars: letters, numbers, underscore">
+                                <label for="personFullNameInput" id="personFullNameLabel">Full Name</label>
+                                <input type="text" id="personFullNameInput" name="person_full_name" maxlength="100" placeholder="Required for new users">
+                                <p class="step-help" id="personFullNameHelp">Required when creating a new user account.</p>
+                                <div id="personPasswordGroup">
+                                    <label for="personPasswordInput" id="personPasswordLabel">Portal Password</label>
+                                    <input type="password" id="personPasswordInput" name="person_password" autocomplete="new-password" placeholder="Required for Admin, Professor, or Security Desk">
+                                    <p class="step-help" id="personPasswordHelp">Required for Admin, Professor, or Security Desk users. Optional for student-only users.</p>
+                                </div>
+                            </section>
+
+                            <section class="onboarding-step" id="newUserSetup">
+                                <h4>2. Roles (new user only)</h4>
+                                <div class="label-row">Roles</div>
+                                <div class="checkbox-grid">
+                                    <label><input type="checkbox" id="faceRoleAdmin"> Admin</label>
+                                    <label><input type="checkbox" id="faceRoleProf"> Professor</label>
+                                    <label><input type="checkbox" id="faceRoleStudent" checked> Student</label>
+                                    <label class="security-desk-role"><input type="checkbox" id="faceRoleSecurityDesk"> <span class="role-label-text">Security Desk (Doors + Logs)</span></label>
+                                </div>
+                            </section>
+
+                            <section class="onboarding-step">
+                                <h4>3. Consent (required)</h4>
+                                <label class="consent-check" for="faceConsentOptIn">
+                                    <input type="checkbox" id="faceConsentOptIn">
+                                    <span>I confirm the person has explicitly opted in to face enrollment for classroom access.</span>
+                                </label>
+                            </section>
+                        </div>
+
+                        <button class="video-btn" id="btnRight" type="button">Start Enrollment</button>
                         <div class="video-box" id="videoRight">
                             <span id="videoPlaceholder">Face capture feed will appear here</span>
                         </div>
@@ -503,7 +676,9 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 </article>
             </div>
         </section>
+        <?php endif; ?>
 
+        <?php if (in_array('doors', $allowedTabs, true)): ?>
         <section class="tab-panel<?php echo $activeTab === 'doors' ? ' active' : ''; ?>" id="tab-doors">
             <article class="admin-card wide">
                 <h3>Remote Door Control By Room</h3>
@@ -569,7 +744,9 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 <?php endif; ?>
             </article>
         </section>
+        <?php endif; ?>
 
+        <?php if (in_array('logs', $allowedTabs, true)): ?>
         <section class="tab-panel<?php echo $activeTab === 'logs' ? ' active' : ''; ?>" id="tab-logs">
             <article class="admin-card wide">
                 <h3>Activity Logs</h3>
@@ -690,12 +867,13 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                                             <span class="sort-indicator"><?php echo e(logSortIndicator('target_username', $logSort, $logDir)); ?></span>
                                         </a>
                                     </th>
+                                    <th>Picture</th>
                                     <th>Details</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($logs)): ?>
-                                    <tr><td colspan="6" class="muted">No logs match the current filters.</td></tr>
+                                    <tr><td colspan="7" class="muted">No logs match the current filters.</td></tr>
                                 <?php else: ?>
                                     <?php foreach ($logs as $log): ?>
                                         <tr>
@@ -704,6 +882,15 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                                             <td><span class="log-tag"><?php echo e($log['action_type']); ?></span></td>
                                             <td><?php echo e($log['actor_username'] !== null ? $log['actor_username'] : '-'); ?></td>
                                             <td><?php echo e($log['target_username'] !== null ? $log['target_username'] : '-'); ?></td>
+                                            <td>
+                                                <?php if (!empty($log['scan_image_path'])): ?>
+                                                    <a href="<?php echo e($log['scan_image_path']); ?>" target="_blank" rel="noopener">
+                                                        <img class="log-scan-image" src="<?php echo e($log['scan_image_path']); ?>" alt="Face scan snapshot">
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="muted">-</span>
+                                                <?php endif; ?>
+                                            </td>
                                             <td class="details"><?php echo e($log['details']); ?></td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -740,6 +927,7 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 <?php endif; ?>
             </article>
         </section>
+        <?php endif; ?>
     </div>
 
     <script>
@@ -768,16 +956,6 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
             doors: document.getElementById('tab-doors'),
             logs: document.getElementById('tab-logs')
         };
-        let facesWarmupStarted = false;
-
-        const warmupFacesCamera = () => {
-            if (facesWarmupStarted) {
-                return;
-            }
-            facesWarmupStarted = true;
-            fetch('http://debianRy.local:5000/warmup?t=' + Date.now(), { cache: 'no-store' }).catch(() => {});
-        };
-
         tabs.forEach((btn) => {
             btn.addEventListener('click', () => {
                 const tabName = btn.getAttribute('data-tab');
@@ -788,16 +966,8 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                         panels[name].classList.toggle('active', name === tabName);
                     }
                 });
-                if (tabName === 'faces') {
-                    warmupFacesCamera();
-                }
             });
         });
-
-        const activeFacesTab = document.querySelector('.admin-tab.active[data-tab="faces"]');
-        if (activeFacesTab) {
-            warmupFacesCamera();
-        }
     })();
     </script>
 
@@ -807,6 +977,20 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
         const box = document.getElementById('videoRight');
         const idInput = document.getElementById('personIdInput');
         const fullNameInput = document.getElementById('personFullNameInput');
+        const fullNameLabel = document.getElementById('personFullNameLabel');
+        const fullNameHelp = document.getElementById('personFullNameHelp');
+        const passwordGroup = document.getElementById('personPasswordGroup');
+        const passwordInput = document.getElementById('personPasswordInput');
+        const passwordLabel = document.getElementById('personPasswordLabel');
+        const passwordHelp = document.getElementById('personPasswordHelp');
+        const flowCreate = document.getElementById('flowCreateUser');
+        const flowExisting = document.getElementById('flowExistingUser');
+        const newUserSetup = document.getElementById('newUserSetup');
+        const roleAdmin = document.getElementById('faceRoleAdmin');
+        const roleProf = document.getElementById('faceRoleProf');
+        const roleStudent = document.getElementById('faceRoleStudent');
+        const roleSecurityDesk = document.getElementById('faceRoleSecurityDesk');
+        const consentOptIn = document.getElementById('faceConsentOptIn');
         const statusEl = document.getElementById('captureFaceStatus');
         let isCapturing = false;
         let imgElement = null;
@@ -815,9 +999,70 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
         let activeCapturePersonId = '';
         const personIdPattern = /^[A-Za-z0-9_]{3,40}$/;
 
-        if (!btn || !box || !idInput || !fullNameInput || !statusEl) {
+        if (
+            !btn || !box || !idInput || !fullNameInput || !statusEl ||
+            !flowCreate || !flowExisting || !newUserSetup || !fullNameLabel || !fullNameHelp ||
+            !passwordGroup || !passwordInput || !passwordLabel || !passwordHelp ||
+            !roleAdmin || !roleProf || !roleStudent || !roleSecurityDesk ||
+            !consentOptIn
+        ) {
             return;
         }
+
+        const getEnrollFlow = () => (flowCreate.checked ? 'create' : 'existing');
+
+        const getSelectedRoles = () => ({
+            is_admin: roleAdmin.checked ? 1 : 0,
+            is_prof: roleProf.checked ? 1 : 0,
+            is_student: roleStudent.checked ? 1 : 0,
+            is_security_desk: roleSecurityDesk.checked ? 1 : 0
+        });
+
+        const hasAtLeastOneRole = (roles) => (roles.is_admin + roles.is_prof + roles.is_student) > 0 || roles.is_security_desk === 1;
+        const requiresPortalPassword = (roles) => roles.is_admin === 1 || roles.is_prof === 1 || roles.is_security_desk === 1;
+
+        const setSetupInputsDisabled = (disabled) => {
+            flowCreate.disabled = disabled;
+            flowExisting.disabled = disabled;
+            idInput.disabled = disabled;
+            fullNameInput.disabled = disabled;
+            passwordInput.disabled = disabled;
+            roleAdmin.disabled = disabled;
+            roleProf.disabled = disabled;
+            roleStudent.disabled = disabled;
+            roleSecurityDesk.disabled = disabled;
+            consentOptIn.disabled = disabled;
+        };
+
+        const syncPasswordRequirementUi = () => {
+            const creating = getEnrollFlow() === 'create';
+            const roles = getSelectedRoles();
+            const required = creating && requiresPortalPassword(roles);
+            passwordLabel.textContent = required ? 'Portal Password (required)' : 'Portal Password';
+            passwordInput.required = required;
+            passwordInput.placeholder = required
+                ? 'Required for Admin, Professor, or Security Desk'
+                : 'Optional for student-only users';
+            passwordHelp.textContent = required
+                ? 'Required because this user has Admin, Professor, or Security Desk access.'
+                : 'Optional for student-only users.';
+        };
+
+        const syncEnrollFlowUi = () => {
+            const creating = getEnrollFlow() === 'create';
+            newUserSetup.hidden = !creating;
+            passwordGroup.hidden = !creating;
+            fullNameInput.required = creating;
+            fullNameLabel.textContent = creating ? 'Full Name' : 'Full Name (optional)';
+            fullNameInput.placeholder = creating ? 'Required for new users' : 'Optional';
+            fullNameHelp.textContent = creating
+                ? 'Required when creating a new user account.'
+                : 'Optional for existing users. Leave blank to keep current profile name.';
+            if (!creating) {
+                passwordInput.value = '';
+            }
+            syncPasswordRequirementUi();
+        };
 
         const stopRecognitionFeed = async () => {
             try {
@@ -838,10 +1083,12 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 imgElement.src = '';
             }
             box.innerHTML = '<span id="videoPlaceholder">Face capture feed will appear here</span>';
-            btn.textContent = 'Start Capture';
+            btn.textContent = 'Start Enrollment';
             isCapturing = false;
             imgElement = null;
             activeCapturePersonId = '';
+            setSetupInputsDisabled(false);
+            syncEnrollFlowUi();
             if (message) {
                 statusEl.textContent = message;
             }
@@ -856,6 +1103,28 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                 } catch (e) {}
             }
             resetCaptureUi(options.message || 'Capture stopped.');
+        };
+
+        const provisionNewUser = async (payload) => {
+            const body = new URLSearchParams();
+            body.set('username', payload.username);
+            body.set('full_name', payload.full_name);
+            body.set('is_admin', String(payload.is_admin));
+            body.set('is_prof', String(payload.is_prof));
+            body.set('is_student', String(payload.is_student));
+            body.set('is_security_desk', String(payload.is_security_desk));
+            body.set('password', payload.password);
+
+            const res = await fetch('./faceProvisionUser.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: body.toString()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.ok === false) {
+                throw new Error(data.message || 'Could not create the user profile for enrollment.');
+            }
+            return data;
         };
 
         const lookupUser = async (personId) => {
@@ -913,23 +1182,79 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
             scheduleStatusPoll();
         };
 
+        flowCreate.addEventListener('change', syncEnrollFlowUi);
+        flowExisting.addEventListener('change', syncEnrollFlowUi);
+        roleAdmin.addEventListener('change', syncPasswordRequirementUi);
+        roleProf.addEventListener('change', syncPasswordRequirementUi);
+        roleStudent.addEventListener('change', syncPasswordRequirementUi);
+        roleSecurityDesk.addEventListener('change', syncPasswordRequirementUi);
+        syncEnrollFlowUi();
+
         btn.addEventListener('click', async () => {
             const personId = idInput.value.trim();
-            const fullName = fullNameInput.value.trim();
             if (!isCapturing) {
                 if (!personId) {
-                    alert('Please enter a Person ID before starting capture.');
+                    alert('Please enter a username before starting enrollment.');
                     return;
                 }
                 if (!personIdPattern.test(personId)) {
                     alert('Username must be 3-40 chars and only letters, numbers, underscore.');
                     return;
                 }
-                btn.textContent = 'Starting Capture...';
-                statusEl.textContent = 'Checking whether the user already exists...';
+                if (!consentOptIn.checked) {
+                    alert('Opt-in consent is required before enrollment.');
+                    return;
+                }
+
+                const flow = getEnrollFlow();
+                let fullName = fullNameInput.value.trim();
+                const portalPassword = passwordInput.value;
+
+                if (flow === 'create') {
+                    if (!fullName) {
+                        alert('Full name is required when creating a new user.');
+                        return;
+                    }
+                    const roles = getSelectedRoles();
+                    if (!hasAtLeastOneRole(roles)) {
+                        alert('Select at least one role or choose Security Desk.');
+                        return;
+                    }
+                    if (roles.is_security_desk === 1 && (roles.is_admin === 1 || roles.is_prof === 1)) {
+                        alert('Security desk users cannot also be Admin or Professor.');
+                        return;
+                    }
+                    if (requiresPortalPassword(roles) && portalPassword.trim() === '') {
+                        alert('Password is required for Admin, Professor, or Security Desk users.');
+                        return;
+                    }
+                }
+
+                btn.textContent = 'Starting Enrollment...';
                 try {
-                    const lookup = await lookupUser(personId);
-                    statusEl.textContent = lookup.message || 'Starting capture...';
+                    if (flow === 'create') {
+                        const roles = getSelectedRoles();
+                        statusEl.textContent = 'Creating user profile...';
+                        const created = await provisionNewUser({
+                            username: personId,
+                            full_name: fullName,
+                            password: portalPassword,
+                            ...roles
+                        });
+                        fullName = created.full_name || fullName;
+                        statusEl.textContent = created.message || 'User created. Starting facial capture...';
+                    } else {
+                        statusEl.textContent = 'Validating existing user...';
+                        const lookup = await lookupUser(personId);
+                        if (!lookup.exists) {
+                            throw new Error('User was not found. Switch to "Create new user + face data" if needed.');
+                        }
+                        if (!fullName) {
+                            fullName = lookup.full_name || '';
+                        }
+                        statusEl.textContent = lookup.message || 'Starting facial capture...';
+                    }
+
                     activeCapturePersonId = personId;
                     await stopRecognitionFeed();
                     imgElement = document.createElement('img');
@@ -942,11 +1267,12 @@ $logShowingEnd = $logTotal > 0 ? ($logOffset + count($logs)) : 0;
                     };
                     box.innerHTML = '';
                     box.appendChild(imgElement);
-                    btn.textContent = 'Stop Capture';
+                    btn.textContent = 'Stop Enrollment';
                     isCapturing = true;
+                    setSetupInputsDisabled(true);
                     scheduleStatusPoll();
                 } catch (err) {
-                    btn.textContent = 'Start Capture';
+                    btn.textContent = 'Start Enrollment';
                     statusEl.textContent = err && err.message ? err.message : 'Could not start capture.';
                     activeCapturePersonId = '';
                     alert(statusEl.textContent);

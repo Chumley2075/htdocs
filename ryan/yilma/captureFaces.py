@@ -195,8 +195,8 @@ def warmup_camera():
             width=1920,
             height=1080,
             fps=30,
-            warmup_frames=12,
-            warmup_timeout_s=1.5,
+            warmup_frames=4,
+            warmup_timeout_s=0.8,
         )
     except Exception as e:
         print(f"[WARN] Camera warmup failed: {e}")
@@ -232,8 +232,8 @@ def acquire_camera():
                 width=1920,
                 height=1080,
                 fps=30,
-                warmup_frames=12,
-                warmup_timeout_s=1.5,
+                warmup_frames=4,
+                warmup_timeout_s=0.8,
             )
         return cam
 

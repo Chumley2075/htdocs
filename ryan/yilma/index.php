@@ -6,18 +6,27 @@ session_destroy();
 session_start();
 $DB = new database();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $user = $_POST['username'];
+    $user = trim((string)$_POST['username']);
     $password = $_POST['password'];
     $passwordHash = $DB->getHashedPass($user);
-    if ($DB->userExist($user) && ($DB->isProf($user) || $DB->isAdmin($user))) {
-        if (password_verify($password, $passwordHash)) {
+    if ($DB->canAccessPortal($user)) {
+        if ($passwordHash !== '' && password_verify($password, $passwordHash)) {
+            $isProfessor = $DB->isProf($user);
+            $isAdmin = $DB->isAdmin($user);
+            $permissions = $DB->getUserPermissions($user);
             $_SESSION['valid_user'] = $user;
-            header("Location: mainMenu.php");
+            if ($isProfessor || $isAdmin) {
+                header("Location: mainMenu.php");
+            } else {
+                $landingTab = ((int)$permissions['can_manage_doors'] === 1) ? 'doors' : 'logs';
+                header("Location: admin.php?tab=" . rawurlencode($landingTab));
+            }
+            exit();
         } else {
             echo "<p style = 'color: red;'>Could not log you in! Incorrect password.</p>";
         }
     } else {
-        echo "<p>Could not log you in! Username does not exist.</p>";
+        echo "<p>Could not log you in! Username does not exist or lacks portal access.</p>";
     }
 }
 ?>
@@ -127,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
        
         <div class="login-container" id="login">
             <h2>Welcome to Metro State University</h2>
-            <h3>Professor / Administrator Portal</h3>
+            <h3>Professor / Administrator / Security Desk Portal</h3>
         <form method='post'>
         <label>
             Username:

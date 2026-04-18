@@ -176,7 +176,7 @@ class database
         $username = $this->connection->real_escape_string($username);
         $query = "SELECT * FROM users WHERE username = '$username'";
         if (count($this->QueryAll($query)) === 0) {
-            return "error";
+            return false;
         } else {
             return true;
         }
@@ -258,6 +258,7 @@ class database
                 target_username VARCHAR(100) NULL,
                 action_type VARCHAR(64) NOT NULL,
                 details TEXT NULL,
+                scan_image_path VARCHAR(255) NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_action_time (action_type, created_at),
                 INDEX idx_target_time (target_username, created_at)
@@ -282,6 +283,7 @@ class database
         $this->ensureColumnIfMissing('user_permissions', 'can_manage_faces', "TINYINT(1) NOT NULL DEFAULT 0");
         $this->ensureColumnIfMissing('user_permissions', 'can_manage_doors', "TINYINT(1) NOT NULL DEFAULT 0");
         $this->ensureColumnIfMissing('user_permissions', 'can_view_logs', "TINYINT(1) NOT NULL DEFAULT 1");
+        $this->ensureColumnIfMissing('admin_logs', 'scan_image_path', "VARCHAR(255) NULL");
         $this->ensureColumnIfMissing('door_control_rooms', 'unlock_until', "DATETIME NULL");
         $this->ensureIndexIfMissing('admin_logs', 'idx_action_time', "`action_type`, `created_at`");
         $this->ensureIndexIfMissing('admin_logs', 'idx_target_time', "`target_username`, `created_at`");
@@ -350,15 +352,18 @@ class database
         }
     }
 
-    public function logAdminEvent($actorUsername, $actionType, $targetUsername = null, $details = '')
+    public function logAdminEvent($actorUsername, $actionType, $targetUsername = null, $details = '', $scanImagePath = null)
     {
         $actor = $actorUsername !== null ? "'" . $this->connection->real_escape_string($actorUsername) . "'" : "NULL";
         $target = $targetUsername !== null ? "'" . $this->connection->real_escape_string($targetUsername) . "'" : "NULL";
         $action = $this->connection->real_escape_string($actionType);
         $detailsVal = $details !== null ? "'" . $this->connection->real_escape_string($details) . "'" : "NULL";
+        $imageVal = $scanImagePath !== null && $scanImagePath !== ''
+            ? "'" . $this->connection->real_escape_string($scanImagePath) . "'"
+            : "NULL";
 
-        $query = "INSERT INTO admin_logs (actor_username, target_username, action_type, details)
-                  VALUES ($actor, $target, '$action', $detailsVal)";
+        $query = "INSERT INTO admin_logs (actor_username, target_username, action_type, details, scan_image_path)
+                  VALUES ($actor, $target, '$action', $detailsVal, $imageVal)";
         $this->Query($query);
     }
 
@@ -478,7 +483,7 @@ class database
         if ($filters['sort_sql'] !== 'log_id') {
             $orderBy .= ', log_id DESC';
         }
-        $query = "SELECT log_id, actor_username, target_username, action_type, details, created_at
+        $query = "SELECT log_id, actor_username, target_username, action_type, details, scan_image_path, created_at
                   FROM admin_logs" .
                   $this->buildAdminLogWhereClause($filters) . "
                   ORDER BY $orderBy
@@ -496,7 +501,7 @@ class database
                          COALESCE(p.can_manage_users, 0) AS can_manage_users,
                          COALESCE(p.can_manage_faces, 0) AS can_manage_faces,
                          COALESCE(p.can_manage_doors, 0) AS can_manage_doors,
-                         COALESCE(p.can_view_logs, 1) AS can_view_logs
+                         COALESCE(p.can_view_logs, 0) AS can_view_logs
                   FROM users u
                   LEFT JOIN user_permissions p
                     ON p.username COLLATE utf8mb4_uca1400_ai_ci = u.username COLLATE utf8mb4_uca1400_ai_ci
@@ -510,7 +515,7 @@ class database
         $query = "SELECT COALESCE(can_manage_users, 0) AS can_manage_users,
                          COALESCE(can_manage_faces, 0) AS can_manage_faces,
                          COALESCE(can_manage_doors, 0) AS can_manage_doors,
-                         COALESCE(can_view_logs, 1) AS can_view_logs
+                         COALESCE(can_view_logs, 0) AS can_view_logs
                   FROM user_permissions
                   WHERE username = '$usernameEsc'
                   LIMIT 1";
@@ -520,10 +525,126 @@ class database
                 'can_manage_users' => 0,
                 'can_manage_faces' => 0,
                 'can_manage_doors' => 0,
-                'can_view_logs' => 1,
+                'can_view_logs' => 0,
             ];
         }
         return $rows[0];
+    }
+
+    public function canAccessPortal($username)
+    {
+        $username = trim((string)$username);
+        if ($username === '' || !$this->userExist($username)) {
+            return false;
+        }
+
+        if ($this->isAdmin($username) || $this->isProf($username)) {
+            return true;
+        }
+
+        $permissions = $this->getUserPermissions($username);
+        return ((int)$permissions['can_manage_users'] === 1)
+            || ((int)$permissions['can_manage_faces'] === 1)
+            || ((int)$permissions['can_manage_doors'] === 1)
+            || ((int)$permissions['can_view_logs'] === 1);
+    }
+
+    public function isSecurityDeskUser($username)
+    {
+        $username = trim((string)$username);
+        if ($username === '' || strcasecmp($username, 'Unknown') === 0) {
+            return false;
+        }
+        if ($this->isAdmin($username) || $this->isProf($username)) {
+            return false;
+        }
+        $perm = $this->getUserPermissions($username);
+        return ((int)$perm['can_manage_users'] === 0)
+            && ((int)$perm['can_manage_faces'] === 0)
+            && ((int)$perm['can_manage_doors'] === 1)
+            && ((int)$perm['can_view_logs'] === 1);
+    }
+
+    public function getDoorPrivilegeRole($username)
+    {
+        $username = trim((string)$username);
+        if ($username === '' || strcasecmp($username, 'Unknown') === 0) {
+            return '';
+        }
+        if ($this->isAdmin($username)) {
+            return 'admin';
+        }
+        if ($this->isSecurityDeskUser($username)) {
+            return 'security_desk';
+        }
+        return '';
+    }
+
+    public function isUserEnrolledInClass($classID, $username)
+    {
+        $classID = (int)$classID;
+        $usernameEsc = $this->connection->real_escape_string((string)$username);
+        if ($classID <= 0 || $usernameEsc === '') {
+            return false;
+        }
+        $q = "SELECT 1
+              FROM Enrollments
+              WHERE class_id = $classID
+                AND student_username COLLATE utf8mb4_uca1400_ai_ci = '$usernameEsc' COLLATE utf8mb4_uca1400_ai_ci
+              LIMIT 1";
+        $rows = $this->QueryAll($q);
+        return !empty($rows);
+    }
+
+    public function canUserEnterRoom($roomNumber, $username)
+    {
+        $username = trim((string)$username);
+        if ($username === '' || strcasecmp($username, 'Unknown') === 0) {
+            return [
+                'can_enter' => false,
+                'message' => 'No face match found.',
+                'access_role' => '',
+                'class_id' => null,
+            ];
+        }
+
+        $doorRole = $this->getDoorPrivilegeRole($username);
+        if ($doorRole === 'admin') {
+            return [
+                'can_enter' => true,
+                'message' => 'Admin access granted for this room.',
+                'access_role' => 'admin',
+                'class_id' => null,
+            ];
+        }
+        if ($doorRole === 'security_desk') {
+            return [
+                'can_enter' => true,
+                'message' => 'Security desk access granted for this room.',
+                'access_role' => 'security_desk',
+                'class_id' => null,
+            ];
+        }
+
+        $classID = $this->getCurrentClassID($roomNumber);
+        if (!$classID) {
+            return [
+                'can_enter' => false,
+                'message' => 'No active class is scheduled for this room.',
+                'access_role' => '',
+                'class_id' => null,
+            ];
+        }
+
+        $canEnter = $this->isUserEnrolledInClass($classID, $username);
+        return [
+            'can_enter' => $canEnter,
+            'message' => $canEnter
+                ? 'Student is enrolled in this class.'
+                : 'You are not on the roster for this room right now.',
+            'access_role' => '',
+            'class_id' => $classID,
+        ];
     }
 
     public function findUserByUsername($username)
@@ -538,6 +659,28 @@ class database
             return null;
         }
         return $rows[0];
+    }
+
+    public function getLatestFaceScanImagePath($username, $maxAgeSeconds = 300)
+    {
+        $usernameEsc = $this->connection->real_escape_string((string)$username);
+        $maxAgeSeconds = (int)$maxAgeSeconds;
+        if ($maxAgeSeconds < 1) {
+            $maxAgeSeconds = 300;
+        }
+        $query = "SELECT scan_image_path
+                  FROM admin_logs
+                  WHERE action_type = 'face_scanned'
+                    AND COALESCE(scan_image_path, '') <> ''
+                    AND target_username COLLATE utf8mb4_uca1400_ai_ci = '$usernameEsc' COLLATE utf8mb4_uca1400_ai_ci
+                    AND created_at >= DATE_SUB(NOW(), INTERVAL $maxAgeSeconds SECOND)
+                  ORDER BY created_at DESC, log_id DESC
+                  LIMIT 1";
+        $rows = $this->QueryAll($query);
+        if (!$rows || !isset($rows[0]['scan_image_path'])) {
+            return '';
+        }
+        return (string)$rows[0]['scan_image_path'];
     }
 
     public function updateUserRoles($username, $isProf, $isAdmin, $isStudent, $fullName = null)
@@ -812,6 +955,12 @@ class database
                 'retrain_started' => true,
             ];
         }
+        if ($code === 4) {
+            return [
+                'deleted' => true,
+                'retrain_started' => true,
+            ];
+        }
         return [
             'deleted' => false,
             'retrain_started' => false,
@@ -1024,19 +1173,34 @@ class database
         $classID = (int)$classID;
         $startDate = $this->normalizeDateValue($startDate);
         $endDate = $this->normalizeDateValue($endDate);
-        $q = "SELECT a.meeting_date,
-                     a.student_username,
-                     COALESCE(u.full_name, a.student_username) AS full_name,
-                     MAX(a.scanned_at) AS scanned_at
-              FROM Attendance a
+        $q = "SELECT att.meeting_date,
+                     att.student_username,
+                     COALESCE(u.full_name, att.student_username) AS full_name,
+                     att.scanned_at,
+                     (
+                         SELECT al.scan_image_path
+                         FROM admin_logs al
+                         WHERE al.action_type = 'face_scanned'
+                           AND COALESCE(al.scan_image_path, '') <> ''
+                           AND al.target_username COLLATE utf8mb4_uca1400_ai_ci = att.student_username COLLATE utf8mb4_uca1400_ai_ci
+                           AND DATE(al.created_at) = att.meeting_date
+                         ORDER BY ABS(TIMESTAMPDIFF(SECOND, al.created_at, att.scanned_at)),
+                                  al.created_at DESC
+                         LIMIT 1
+                     ) AS scan_image_path
+              FROM (
+                  SELECT a.meeting_date,
+                         a.student_username,
+                         MAX(a.scanned_at) AS scanned_at
+                  FROM Attendance a
+                  WHERE a.class_id = $classID
+                    AND a.meeting_date BETWEEN '$startDate' AND '$endDate'
+                  GROUP BY a.meeting_date,
+                           a.student_username
+              ) att
               LEFT JOIN users u
-                ON u.username COLLATE utf8mb4_uca1400_ai_ci = a.student_username COLLATE utf8mb4_uca1400_ai_ci
-              WHERE a.class_id = $classID
-                AND a.meeting_date BETWEEN '$startDate' AND '$endDate'
-              GROUP BY a.meeting_date,
-                       a.student_username,
-                       u.full_name
-              ORDER BY a.meeting_date ASC, full_name ASC";
+                ON u.username COLLATE utf8mb4_uca1400_ai_ci = att.student_username COLLATE utf8mb4_uca1400_ai_ci
+              ORDER BY att.meeting_date ASC, full_name ASC";
         return $this->QueryAll($q);
     }
 

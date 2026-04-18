@@ -1,4 +1,8 @@
 import os
+import re
+import secrets
+import subprocess
+import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -11,17 +15,21 @@ import mysql.connector
 from camera_device import open_camera, prewarm_camera, release_camera
 from depth_helper import DepthHelper
 
+BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = Path("models")
 TRAINER_DIR = Path("trainer")
 TRAINER_YML = TRAINER_DIR / "trainer.yml"
 LABELS_NPY = TRAINER_DIR / "labels.npy"
 LAST_LABEL_PATH = "/tmp/last_label.txt"
+SNAPSHOT_DIR = BASE_DIR / "scan_images"
+SNAPSHOT_PUBLIC_PREFIX = "/htdocs/ryan/yilma/scan_images"
 DEFAULT_DOOR_ID = os.getenv("DOOR_ID", "").strip() or None
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 CAMERA_FPS = 30
 JPEG_QUALITY = 80
 RECOGNIZED_HOLD_SECONDS = 1.2
+NO_MATCH_SECONDS = 6.0
 
 prototxt_path = str(MODELS_DIR / "deploy.prototxt")
 model_path = str(MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel")
@@ -38,6 +46,17 @@ _active_streams = 0
 _latest_labels = "Unknown"
 _labels_lock = Lock()
 _label_history = deque(maxlen=20)
+_scan_lock = Lock()
+_latest_scan_result = {
+    "status": "idle",
+    "label": "Unknown",
+    "image_url": "",
+    "token": "",
+    "message": "Ready to scan.",
+    "timestamp": 0.0,
+}
+_scan_result_finalized = False
+_scan_started_at = 0.0
 depth_helper = DepthHelper(
     min_depth_mm=450,
     max_depth_mm=2000,
@@ -127,8 +146,8 @@ def warmup_camera():
             width=CAMERA_WIDTH,
             height=CAMERA_HEIGHT,
             fps=CAMERA_FPS,
-            warmup_frames=12,
-            warmup_timeout_s=1.5,
+            warmup_frames=4,
+            warmup_timeout_s=0.8,
         )
     except Exception as e:
         print(f"[WARN] Camera warmup failed: {e}", flush=True)
@@ -144,8 +163,8 @@ def acquire_camera():
                 width=CAMERA_WIDTH,
                 height=CAMERA_HEIGHT,
                 fps=CAMERA_FPS,
-                warmup_frames=12,
-                warmup_timeout_s=1.5,
+                warmup_frames=4,
+                warmup_timeout_s=0.8,
             )
         return cam
 
@@ -170,6 +189,53 @@ def get_latest_labels():
         return _latest_labels or "Unknown"
 
 
+def reset_scan_result():
+    global _latest_scan_result, _scan_result_finalized, _scan_started_at
+    with _scan_lock:
+        _scan_started_at = time.time()
+        _scan_result_finalized = False
+        _latest_scan_result = {
+            "status": "scanning",
+            "label": "Unknown",
+            "image_url": "",
+            "token": "",
+            "message": "Scanning for a face match.",
+            "timestamp": _scan_started_at,
+        }
+
+
+def get_latest_scan_result():
+    with _scan_lock:
+        return dict(_latest_scan_result)
+
+
+def has_final_scan_result():
+    with _scan_lock:
+        return _scan_result_finalized
+
+
+def safe_snapshot_label(label: str):
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", (label or "unknown").strip())
+    return safe[:48] or "unknown"
+
+
+def save_scan_snapshot(frame, result_type: str, label: str):
+    try:
+        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(SNAPSHOT_DIR, 0o777)
+        except Exception:
+            pass
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{stamp}_{result_type}_{safe_snapshot_label(label)}_{secrets.token_hex(4)}.jpg"
+        path = SNAPSHOT_DIR / filename
+        if cv2.imwrite(str(path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]):
+            return f"{SNAPSHOT_PUBLIC_PREFIX}/{filename}"
+    except Exception as e:
+        print(f"[WARN] Could not save scan snapshot: {e}", flush=True)
+    return ""
+
+
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
@@ -177,6 +243,58 @@ def get_db_connection():
         password="ics311",
         database="UniversityDB",
     )
+
+
+def ensure_admin_logs(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_logs (
+            log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            actor_username VARCHAR(100) NULL,
+            target_username VARCHAR(100) NULL,
+            action_type VARCHAR(64) NOT NULL,
+            details TEXT NULL,
+            scan_image_path VARCHAR(255) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_action_time (action_type, created_at),
+            INDEX idx_target_time (target_username, created_at)
+        )
+        """
+    )
+    try:
+        cur.execute(
+            "ALTER TABLE admin_logs ADD COLUMN IF NOT EXISTS scan_image_path VARCHAR(255) NULL"
+        )
+    except Exception:
+        try:
+            cur.execute("SHOW COLUMNS FROM admin_logs LIKE 'scan_image_path'")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE admin_logs ADD COLUMN scan_image_path VARCHAR(255) NULL")
+        except Exception as e:
+            print(f"[WARN] Could not ensure admin_logs.scan_image_path: {e}")
+
+
+def log_scan_event(actor_username, target_username, action_type, details, image_path=None):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        ensure_admin_logs(cur)
+        cur.execute(
+            """
+            INSERT INTO admin_logs (actor_username, target_username, action_type, details, scan_image_path)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (actor_username, target_username, action_type, details, image_path or None),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[WARN] Could not write {action_type} log: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def ensure_door_control(cur):
@@ -300,51 +418,151 @@ def get_door_state(door_id=None):
     }
 
 
-def log_face_scan(label: str):
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS admin_logs (
-                log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                actor_username VARCHAR(100) NULL,
-                target_username VARCHAR(100) NULL,
-                action_type VARCHAR(64) NOT NULL,
-                details TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_action_time (action_type, created_at),
-                INDEX idx_target_time (target_username, created_at)
-            )
-            """
-        )
-        cur.execute(
-            """
-            INSERT INTO admin_logs (actor_username, target_username, action_type, details)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (label, label, "face_scanned", "Recognized by camera stream"),
-        )
-        conn.commit()
-    except Exception as e:
-        print(f"[WARN] Could not write face_scanned log: {e}")
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+def log_face_scan(label: str, image_path=None):
+    log_scan_event(label, label, "face_scanned", "Recognized by camera stream", image_path)
 
 
-def is_prof_or_admin(username: str):
+def log_face_not_matched(image_path=None):
+    log_scan_event(None, None, "face_not_matched", "Face scan completed without a recognized match", image_path)
+
+
+def finalize_scan_result(status: str, label: str, frame):
+    global _latest_scan_result, _scan_result_finalized
+    if has_final_scan_result():
+        return False
+
+    image_path = save_scan_snapshot(frame, status, label)
+    token = secrets.token_urlsafe(24) if status == "matched" else ""
+    message = (
+        f"Face matched: {label}"
+        if status == "matched"
+        else "No face match found."
+    )
+
+    with _scan_lock:
+        if _scan_result_finalized:
+            return False
+        _scan_result_finalized = True
+        _latest_scan_result = {
+            "status": status,
+            "label": label,
+            "image_url": image_path,
+            "token": token,
+            "message": message,
+            "timestamp": time.time(),
+        }
+
+    if status == "matched":
+        log_face_scan(label, image_path)
+    elif status == "no_match":
+        log_face_not_matched(image_path)
+    return True
+
+
+def opt_out_latest_face(label: str, token: str):
+    global _latest_labels
+    label = (label or "").strip()
+    token = (token or "").strip()
+    with _scan_lock:
+        result = dict(_latest_scan_result)
+
+    if result.get("status") != "matched":
+        return False, "No matched scan is ready for opt-out."
+    if not secrets.compare_digest(token, result.get("token") or ""):
+        return False, "The opt-out confirmation expired. Please scan again."
+    if label != (result.get("label") or ""):
+        return False, "The opt-out request does not match the latest scan."
+    if "," in label:
+        return False, "Opt-out supports one recognized student at a time."
+
+    script = BASE_DIR / "deleteFace.py"
+    if not script.is_file():
+        return False, "Face deletion script was not found."
+
+    proc = subprocess.run(
+        [sys.executable, str(script), label],
+        cwd=str(BASE_DIR),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = "\n".join(part.strip() for part in (proc.stdout, proc.stderr) if part.strip())
+    image_path = result.get("image_url") or None
+
+    if proc.returncode == 0:
+        load_trainer_from_db(force=True)
+        log_scan_event(
+            label,
+            label,
+            "face_opt_out_deleted",
+            "Student opted out; face data deleted and retraining completed",
+            image_path,
+        )
+        with _scan_lock:
+            _latest_scan_result.update({
+                "status": "opted_out",
+                "token": "",
+                "message": "Face data deleted and model regenerated.",
+            })
+        with _labels_lock:
+            _latest_labels = "Unknown"
+            try:
+                with open(LAST_LABEL_PATH, "w") as f:
+                    f.write(_latest_labels)
+            except Exception:
+                pass
+        return True, "Face data deleted and model regenerated."
+    if proc.returncode == 4:
+        load_trainer_from_db(force=True)
+        log_scan_event(
+            label,
+            label,
+            "face_opt_out_deleted",
+            "No face folder found; model regenerated to clear stale label data",
+            image_path,
+        )
+        with _scan_lock:
+            _latest_scan_result.update({
+                "status": "opted_out",
+                "token": "",
+                "message": "No matching face folder was found, but the model was regenerated.",
+            })
+        with _labels_lock:
+            _latest_labels = "Unknown"
+            try:
+                with open(LAST_LABEL_PATH, "w") as f:
+                    f.write(_latest_labels)
+            except Exception:
+                pass
+        return True, "No matching face folder was found, but the model was regenerated."
+
+    detail = "Student opt-out face deletion failed"
+    if proc.returncode == 1:
+        detail = "Student opt-out failed; no matching face directory"
+    elif proc.returncode == 3:
+        detail = "Student opt-out deleted face data, but retraining failed"
+    log_scan_event(label, label, "face_opt_out_failed", detail, image_path)
+    if output:
+        print(f"[WARN] opt-out delete failed for {label}: {output}", flush=True)
+    return False, detail + "."
+
+
+def get_door_unlock_role(username: str):
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
         cur.execute(
             """
-            SELECT is_admin, is_prof
-            FROM users
+            SELECT u.is_admin,
+                   u.is_prof,
+                   COALESCE(p.can_manage_users, 0) AS can_manage_users,
+                   COALESCE(p.can_manage_faces, 0) AS can_manage_faces,
+                   COALESCE(p.can_manage_doors, 0) AS can_manage_doors,
+                   COALESCE(p.can_view_logs, 0) AS can_view_logs
+            FROM users u
+            LEFT JOIN user_permissions p
+              ON p.username = u.username
             WHERE username = %s
             LIMIT 1
             """,
@@ -352,11 +570,24 @@ def is_prof_or_admin(username: str):
         )
         row = cur.fetchone()
         if not row:
-            return False
-        return int(row.get("is_admin", 0)) == 1 or int(row.get("is_prof", 0)) == 1
+            return None
+        if int(row.get("is_admin", 0)) == 1:
+            return "admin"
+        is_security_desk = (
+            int(row.get("is_prof", 0)) == 0
+            and int(row.get("can_manage_users", 0)) == 0
+            and int(row.get("can_manage_faces", 0)) == 0
+            and int(row.get("can_manage_doors", 0)) == 1
+            and int(row.get("can_view_logs", 0)) == 1
+        )
+        if is_security_desk:
+            return "security_desk"
+        if int(row.get("is_prof", 0)) == 1:
+            return "professor"
+        return None
     except Exception as e:
         print(f"[WARN] Could not verify role for {username}: {e}")
-        return False
+        return None
     finally:
         try:
             conn.close()
@@ -364,13 +595,19 @@ def is_prof_or_admin(username: str):
             pass
 
 
-def unlock_door_from_face_scan(username: str, door_id=None):
+def unlock_door_from_face_scan(username: str, door_id=None, actor_role=None, image_path=None):
     door_id = normalize_door_id(door_id)
     conn = None
+    role_label = {
+        "admin": "admin",
+        "security_desk": "security desk",
+        "professor": "professor",
+    }.get(actor_role or "", "authorized")
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         ensure_door_control(cur)
+        lock_reason = f"Unlocked by {role_label} face scan"
         if door_id:
             cur.execute(
                 """
@@ -384,7 +621,7 @@ def unlock_door_from_face_scan(username: str, door_id=None):
                   AND is_locked = 1
                   AND lock_mode = 'locked_until_authorized'
                 """,
-                ("Unlocked by authorized face scan", username, door_id),
+                (lock_reason, username, door_id),
             )
         else:
             cur.execute(
@@ -398,21 +635,21 @@ def unlock_door_from_face_scan(username: str, door_id=None):
                 WHERE is_locked = 1
                   AND lock_mode = 'locked_until_authorized'
                 """,
-                ("Unlocked by authorized face scan", username),
+                (lock_reason, username),
             )
         did_unlock = cur.rowcount > 0
         if did_unlock:
             detail = (
-                "Door auto-unlocked after authorized face scan"
+                f"Door auto-unlocked by {role_label} face scan"
                 if not door_id
-                else f"Door {door_id} auto-unlocked after authorized face scan"
+                else f"Door {door_id} auto-unlocked by {role_label} face scan"
             )
             cur.execute(
                 """
-                INSERT INTO admin_logs (actor_username, target_username, action_type, details)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO admin_logs (actor_username, target_username, action_type, details, scan_image_path)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (username, None, "door_unlocked_by_face", detail),
+                (username, None, "door_unlocked_by_face", detail, image_path or None),
             )
         conn.commit()
         return did_unlock
@@ -426,7 +663,7 @@ def unlock_door_from_face_scan(username: str, door_id=None):
             pass
 
 
-def evaluate_door_auto_unlock(stable_label: str, door_id=None):
+def evaluate_door_auto_unlock(stable_label: str, door_id=None, scan_image_path=None):
     global _last_door_eval_at
     now = time.time()
     if (now - _last_door_eval_at) < 1.5:
@@ -448,13 +685,19 @@ def evaluate_door_auto_unlock(stable_label: str, door_id=None):
         username = raw.strip()
         if not username or username == "Unknown":
             continue
-        if is_prof_or_admin(username):
-            unlocked = unlock_door_from_face_scan(username, door_id)
+        role = get_door_unlock_role(username)
+        if role in ("admin", "security_desk", "professor"):
+            unlocked = unlock_door_from_face_scan(
+                username,
+                door_id,
+                actor_role=role,
+                image_path=scan_image_path,
+            )
             if unlocked:
                 if door_id:
-                    print(f"[INFO] Door {door_id} auto-unlocked by face scan: {username}")
+                    print(f"[INFO] Door {door_id} auto-unlocked by {role} face scan: {username}")
                 else:
-                    print(f"[INFO] Door auto-unlocked by face scan: {username}")
+                    print(f"[INFO] Door auto-unlocked by {role} face scan: {username}")
             return
 
 
@@ -506,8 +749,17 @@ def initialize_recognition_service():
 
 
 def prepare_scan(force_reload=False):
+    global _latest_labels
+    reset_scan_result()
+    with _labels_lock:
+        _latest_labels = "Unknown"
+        try:
+            with open(LAST_LABEL_PATH, "w") as f:
+                f.write(_latest_labels)
+        except Exception:
+            pass
     load_trainer_from_db(force=force_reload)
-    return warmup_camera()
+    return True
 
 
 def generate_frames(door_id=None):
@@ -516,6 +768,7 @@ def generate_frames(door_id=None):
     _label_history.clear()
     _candidate_label = "Unknown"
     _candidate_label_since = 0.0
+    reset_scan_result()
     with _labels_lock:
         _latest_labels = "Unknown"
         try:
@@ -630,11 +883,18 @@ def generate_frames(door_id=None):
                     except Exception:
                         pass
             if stable_label != "Unknown":
-                if stable_label != _last_logged_label or (now - _last_logged_at) >= 30:
-                    log_face_scan(stable_label)
+                if finalize_scan_result("matched", stable_label, frame):
                     _last_logged_label = stable_label
                     _last_logged_at = now
-            evaluate_door_auto_unlock(stable_label, resolved_door_id)
+            elif not has_final_scan_result() and (now - _scan_started_at) >= NO_MATCH_SECONDS:
+                finalize_scan_result("no_match", "Unknown", frame)
+            latest_scan = get_latest_scan_result()
+            scan_image_path = (
+                latest_scan.get("image_url")
+                if latest_scan.get("status") == "matched"
+                else None
+            )
+            evaluate_door_auto_unlock(stable_label, resolved_door_id, scan_image_path)
             ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
             if not ret:
                 continue
