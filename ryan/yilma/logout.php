@@ -1,6 +1,3 @@
 <?php
-session_start();
-session_destroy();
-header("Location: index.php");
-exit;
-?>
+// Compatibility shim: logout handler moved under app/controllers.
+require_once __DIR__ . '/app/controllers/logout_controller.php';
