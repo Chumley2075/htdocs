@@ -114,3 +114,52 @@ Important UI notes:
    - `python3 -m py_compile <file.py>`
 3. Verify the affected flow end-to-end.
 4. Check diff with `git status --short`.
+
+## 10) File One-Liners (What Each File Does)
+### `ryan/` classroom app
+| File | One-liner |
+|---|---|
+| `ryan/index.php` | URL shim that loads the classroom page. |
+| `ryan/labels.php` | URL shim for classroom label/access API routes. |
+| `ryan/getClassInfo.php` | URL shim for class/session info API. |
+| `ryan/database.php` | URL shim exposing the shared `database` class. |
+| `ryan/styles.css` | Main stylesheet for classroom display + face-scan modal UI. |
+| `ryan/classroom.js` | Legacy classroom JS placeholder (currently not wired into `classroom_page.php`). |
+| `ryan/app/core/database.php` | Core shared DB/business logic (roles, access rules, attendance, logs, doors). |
+| `ryan/app/controllers/class_info_controller.php` | Returns room/class status data used by classroom display. |
+| `ryan/app/controllers/labels_controller.php` | Handles scan label decisions and room-entry authorization flow. |
+| `ryan/app/pages/classroom_page.php` | Classroom UI markup and inline JS for live status + scan modal behavior. |
+
+### `ryan/yilma/` portal app
+| File | One-liner |
+|---|---|
+| `ryan/yilma/index.php` | URL shim that loads the portal login page. |
+| `ryan/yilma/admin.php` | URL shim that loads admin console page. |
+| `ryan/yilma/mainMenu.php` | URL shim that loads professor/admin report page. |
+| `ryan/yilma/faceProvisionUser.php` | URL shim for user+face provisioning endpoint. |
+| `ryan/yilma/faceUserLookup.php` | URL shim for existing-user lookup during enrollment. |
+| `ryan/yilma/deleteFace.php` | URL shim for deleting a user’s face data. |
+| `ryan/yilma/logout.php` | URL shim for logout endpoint. |
+| `ryan/yilma/style.css` | Shared stylesheet for login, admin, and reporting pages. |
+| `ryan/yilma/app/database.php` | Portal-local shim that imports shared DB class from `ryan/database.php`. |
+| `ryan/yilma/app/pages/login_page.php` | Login UI and portal auth redirect handling. |
+| `ryan/yilma/app/pages/admin_page.php` | Admin console UI for users, faces, door control, and logs. |
+| `ryan/yilma/app/pages/main_menu_page.php` | Professor/admin attendance reporting dashboard UI. |
+| `ryan/yilma/app/controllers/face_provision_controller.php` | API controller to create/update user profile before face enrollment. |
+| `ryan/yilma/app/controllers/face_user_lookup_controller.php` | API controller to fetch existing user details for enrollment flow. |
+| `ryan/yilma/app/controllers/delete_face_controller.php` | API controller that coordinates face deletion and retraining actions. |
+| `ryan/yilma/app/controllers/logout_controller.php` | API/controller endpoint that ends portal session. |
+
+### `ryan/yilma/` recognition and capture runtime
+| File | One-liner |
+|---|---|
+| `ryan/yilma/cameraTest.py` | Flask service on port 5000 for live face enrollment capture stream/status. |
+| `ryan/yilma/camera_device.py` | Camera open/warmup/release helper utilities for capture/recognition services. |
+| `ryan/yilma/captureFaces.py` | Captures and stores enrollment face samples, then triggers model retraining. |
+| `ryan/yilma/deleteFace.py` | Removes a user’s face training data and retriggers trainer pipeline. |
+| `ryan/yilma/depth_helper.py` | Depth-processing helper used to improve recognition/scan reliability. |
+| `ryan/yilma/flaskRecognize.py` | Flask service on port 5001 exposing recognition, scan result, and door-state APIs. |
+| `ryan/yilma/recognize.py` | Core recognition loop: face match, scan snapshots, and auto-unlock decisions. |
+| `ryan/yilma/run_flask_services.py` | Convenience launcher that starts both Flask services together. |
+| `ryan/yilma/sensorTEST.py` | Hardware/sensor test script for local diagnostics. |
+| `ryan/yilma/trainer.py` | Builds LBPH trainer artifacts from training images and uploads trainer data to DB. |
