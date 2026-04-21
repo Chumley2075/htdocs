@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+
+# Runtime snapshots
+data/scan_images/*.jpg
+data/scan_images/*.jpeg
+data/scan_images/*.png
+!data/scan_images/.gitkeep
