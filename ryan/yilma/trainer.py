@@ -5,8 +5,8 @@ from pathlib import Path
 import mysql.connector
 
 # === Paths ===
-data_path = Path('training_images')
-trainer_path = Path('trainer')
+data_path = Path('data/training_images')
+trainer_path = Path('data/trainer')
 trainer_path.mkdir(parents=True, exist_ok=True)
 
 # === Create LBPH recognizer ===
@@ -100,7 +100,7 @@ def clear_trainer_from_db():
 
 
 def main():
-    print("[INFO] Scanning training_images for faces ...")
+    print("[INFO] Scanning data/training_images for faces ...")
     if not data_path.exists():
         print("[INFO] Training directory does not exist; clearing trainer artifacts.")
         clear_local_trainer_files()

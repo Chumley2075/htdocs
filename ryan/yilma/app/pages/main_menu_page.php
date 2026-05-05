@@ -38,6 +38,34 @@ function parseDateOrFallback($dateValue, DateTimeImmutable $fallback)
     return $parsed;
 }
 
+function isScheduledClassDate($dateValue, $scheduleRows)
+{
+    $dateValue = trim((string)$dateValue);
+    $parsed = DateTimeImmutable::createFromFormat('Y-m-d', $dateValue);
+    if (!$parsed || $parsed->format('Y-m-d') !== $dateValue) {
+        return false;
+    }
+    if (!$scheduleRows) {
+        return false;
+    }
+
+    $scheduledDays = [];
+    foreach ($scheduleRows as $row) {
+        if (!isset($row['day_of_week'])) {
+            continue;
+        }
+        $dayCode = substr((string)$row['day_of_week'], 0, 3);
+        if ($dayCode !== '') {
+            $scheduledDays[$dayCode] = true;
+        }
+    }
+    if (!$scheduledDays) {
+        return false;
+    }
+
+    return isset($scheduledDays[$parsed->format('D')]);
+}
+
 function buildReportRange($period, $dayDate, $customStartDate, $customEndDate)
 {
     $allowedPeriods = ['day', 'last7', 'custom'];
@@ -293,6 +321,25 @@ $selectedStartDate = isset($_GET['report_start_date']) ? $_GET['report_start_dat
 $selectedEndDate = isset($_GET['report_end_date']) ? $_GET['report_end_date'] : date('Y-m-d');
 $reportRange = buildReportRange($selectedPeriod, $selectedDate, $selectedStartDate, $selectedEndDate);
 $classes = $db->getClassList($currentUser);
+$classScheduleDaysByClass = [];
+foreach ($classes as $classRow) {
+    $classId = isset($classRow['class_id']) ? (int)$classRow['class_id'] : 0;
+    if ($classId <= 0) {
+        continue;
+    }
+    $entries = $db->getClassScheduleEntries($classId);
+    $dayCodes = [];
+    foreach ($entries as $entry) {
+        if (!isset($entry['day_of_week'])) {
+            continue;
+        }
+        $code = substr((string)$entry['day_of_week'], 0, 3);
+        if ($code !== '') {
+            $dayCodes[$code] = true;
+        }
+    }
+    $classScheduleDaysByClass[(string)$classId] = array_keys($dayCodes);
+}
 $displayName = $db->getUserInfo($currentUser, 'full_name');
 $dashboardLabel = $isAdmin && $isProfessor
     ? 'Professor / Administrator Reporting'
@@ -312,23 +359,27 @@ if ($selectedClassId > 0) {
             $reportError = 'That class could not be found.';
         } else {
             $scheduleRows = $db->getClassScheduleEntries($selectedClassId);
-            $rosterRows = $db->getClassRoster($selectedClassId);
-            $attendanceRows = $db->getAttendanceForRange(
-                $selectedClassId,
-                $reportRange['start'],
-                $reportRange['end']
-            );
-            $scheduledMeetings = buildScheduledMeetings(
-                $scheduleRows,
-                $reportRange['start'],
-                $reportRange['end']
-            );
-            $reportData = buildAttendanceReport(
-                $rosterRows,
-                $attendanceRows,
-                $scheduledMeetings,
-                $reportRange['period']
-            );
+            if ($reportRange['period'] === 'day' && !isScheduledClassDate($reportRange['day_date'], $scheduleRows)) {
+                $reportError = 'Selected date is not a scheduled class day for this course.';
+            } else {
+                $rosterRows = $db->getClassRoster($selectedClassId);
+                $attendanceRows = $db->getAttendanceForRange(
+                    $selectedClassId,
+                    $reportRange['start'],
+                    $reportRange['end']
+                );
+                $scheduledMeetings = buildScheduledMeetings(
+                    $scheduleRows,
+                    $reportRange['start'],
+                    $reportRange['end']
+                );
+                $reportData = buildAttendanceReport(
+                    $rosterRows,
+                    $attendanceRows,
+                    $scheduledMeetings,
+                    $reportRange['period']
+                );
+            }
         }
     }
 }
@@ -339,11 +390,16 @@ if ($selectedClassId > 0) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Metro State University | Attendance Reports</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    var dayCodeToJsWeekday = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    var scheduleDaysByClass = <?php echo json_encode($classScheduleDaysByClass, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     var periodSelect = document.getElementById('reportPeriod');
+    var classSelect = document.getElementById('classSelect');
     var dayDateControl = document.getElementById('reportDateControl');
     var dayDateInput = document.getElementById('reportDate');
     var customStartControl = document.getElementById('reportStartControl');
@@ -351,12 +407,63 @@ document.addEventListener('DOMContentLoaded', function () {
     var customEndControl = document.getElementById('reportEndControl');
     var customEndInput = document.getElementById('reportEndDate');
     if (
-        !periodSelect ||
+        !periodSelect || !classSelect ||
         !dayDateControl || !dayDateInput ||
         !customStartControl || !customStartInput ||
         !customEndControl || !customEndInput
     ) {
         return;
+    }
+
+    function parseIsoDate(isoValue) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(isoValue || '')) {
+            return null;
+        }
+        var parts = isoValue.split('-');
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    }
+
+    function formatIsoDateLocal(dateObj) {
+        var y = String(dateObj.getFullYear());
+        var m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        var d = String(dateObj.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + d;
+    }
+
+    function getAllowedWeekdays(classId) {
+        var codes = scheduleDaysByClass[classId] || [];
+        var out = [];
+        for (var i = 0; i < codes.length; i++) {
+            var code = String(codes[i]).slice(0, 3);
+            if (Object.prototype.hasOwnProperty.call(dayCodeToJsWeekday, code)) {
+                out.push(dayCodeToJsWeekday[code]);
+            }
+        }
+        return out;
+    }
+
+    function isAllowedDate(dateObj, allowedWeekdays) {
+        if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+            return false;
+        }
+        if (!allowedWeekdays.length) {
+            return true;
+        }
+        return allowedWeekdays.indexOf(dateObj.getDay()) !== -1;
+    }
+
+    function findNearestAllowedDate(anchorDate, allowedWeekdays) {
+        if (!(anchorDate instanceof Date) || isNaN(anchorDate.getTime()) || !allowedWeekdays.length) {
+            return null;
+        }
+        var probe = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate());
+        for (var i = 0; i < 370; i++) {
+            if (allowedWeekdays.indexOf(probe.getDay()) !== -1) {
+                return probe;
+            }
+            probe.setDate(probe.getDate() - 1);
+        }
+        return null;
     }
 
     function syncRangeState() {
@@ -373,7 +480,55 @@ document.addEventListener('DOMContentLoaded', function () {
         customEndInput.disabled = !isCustom;
     }
 
+    var datePicker = null;
+    function syncDayDateAvailability() {
+        var classId = classSelect.value;
+        var allowedWeekdays = getAllowedWeekdays(classId);
+        var hasSchedule = allowedWeekdays.length > 0;
+
+        if (window.flatpickr) {
+            if (!datePicker) {
+                datePicker = window.flatpickr(dayDateInput, {
+                    dateFormat: 'Y-m-d',
+                    allowInput: true,
+                    disableMobile: true
+                });
+            }
+            datePicker.set('enable', hasSchedule ? [
+                function (dateObj) {
+                    return isAllowedDate(dateObj, allowedWeekdays);
+                }
+            ] : []);
+        }
+
+        var currentDate = parseIsoDate(dayDateInput.value);
+        dayDateInput.setCustomValidity('');
+        if (hasSchedule && currentDate && !isAllowedDate(currentDate, allowedWeekdays)) {
+            var nearest = findNearestAllowedDate(currentDate, allowedWeekdays);
+            if (nearest) {
+                if (datePicker) {
+                    datePicker.setDate(nearest, false);
+                } else {
+                    dayDateInput.value = formatIsoDateLocal(nearest);
+                }
+            }
+        }
+    }
+
+    dayDateInput.addEventListener('change', function () {
+        var classId = classSelect.value;
+        var allowedWeekdays = getAllowedWeekdays(classId);
+        var currentDate = parseIsoDate(dayDateInput.value);
+        if (allowedWeekdays.length && currentDate && !isAllowedDate(currentDate, allowedWeekdays)) {
+            dayDateInput.setCustomValidity('Please choose a scheduled class day.');
+        } else {
+            dayDateInput.setCustomValidity('');
+        }
+    });
+
+    classSelect.addEventListener('change', syncDayDateAvailability);
     periodSelect.addEventListener('change', syncRangeState);
+    syncDayDateAvailability();
     syncRangeState();
 });
 </script>

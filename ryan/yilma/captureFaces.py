@@ -9,8 +9,8 @@ from camera_device import open_camera, prewarm_camera, release_camera
 os.umask(0o002)  
 
 CAM_INDEX = 0
-BASE_DIR = Path("training_images")
-MODELS_DIR = Path("models")
+BASE_DIR = Path("data/training_images")
+MODELS_DIR = Path("data/models")
 CONF_THRESH = 0.6
 TARGET_SIZE = (200, 200)
 TOTAL_SAMPLES = 200

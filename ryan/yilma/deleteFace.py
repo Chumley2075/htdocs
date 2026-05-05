@@ -8,7 +8,7 @@ import traceback
 import unicodedata
 
 BASE_DIR = "/var/www/html/htdocs/ryan/yilma"
-TRAINING_ROOT = f"{BASE_DIR}/training_images"
+TRAINING_ROOT = f"{BASE_DIR}/data/training_images"
 TRAINER_SCRIPT = f"{BASE_DIR}/trainer.py"
 MAX_SAMPLE_DIRS = 20
 
@@ -96,7 +96,7 @@ def main() -> int:
             if more > 0:
                 print(f"...and {more} more")
         else:
-            print("No face directories currently exist in training_images.")
+            print("No face directories currently exist in data/training_images.")
 
         retrain_code = run_retraining()
         if retrain_code == 0:

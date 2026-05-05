@@ -16,13 +16,14 @@ from camera_device import open_camera, prewarm_camera, release_camera
 from depth_helper import DepthHelper
 
 BASE_DIR = Path(__file__).resolve().parent
-MODELS_DIR = Path("models")
-TRAINER_DIR = Path("trainer")
+DATA_DIR = BASE_DIR / "data"
+MODELS_DIR = DATA_DIR / "models"
+TRAINER_DIR = DATA_DIR / "trainer"
 TRAINER_YML = TRAINER_DIR / "trainer.yml"
 LABELS_NPY = TRAINER_DIR / "labels.npy"
 LAST_LABEL_PATH = "/tmp/last_label.txt"
-SNAPSHOT_DIR = BASE_DIR / "scan_images"
-SNAPSHOT_PUBLIC_PREFIX = "/htdocs/ryan/yilma/scan_images"
+SNAPSHOT_DIR = DATA_DIR / "scan_images"
+SNAPSHOT_PUBLIC_PREFIX = "/htdocs/ryan/yilma/data/scan_images"
 DEFAULT_DOOR_ID = os.getenv("DOOR_ID", "").strip() or None
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
