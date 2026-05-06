@@ -9,6 +9,18 @@ It includes:
 - A portal for professors, administrators, and security desk users.
 - Automatic attendance and access logging.
 
+## Required Equipment
+
+- Intel NUC PC with 16 GB RAM.
+- Included system ISO image (use this ISO for installation).
+- USB webcam.
+- Adafruit ToF sensor.
+- GPIO-to-USB-C converter board (for the ToF sensor connection).
+
+## Installation Note
+
+The included ISO already has the database setup. No separate database installation is required.
+
 ## Accessing the System
 
 Open these pages in your browser:
